@@ -12,7 +12,7 @@ import { SessionSidebar } from './SessionSidebar'
 import { AgentActivityBanner } from './AgentActivityBanner'
 import { PermissionRequestUI } from './PermissionRequestUI'
 import { UserQuestionForm } from './UserQuestionForm'
-import { QueryQueueBar } from './QueryQueueBar'
+import { QueueFab } from './QueueFab'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -342,7 +342,7 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
 
 
 {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Header */}
         <header className="h-12 border-b border-border flex items-center px-3 gap-2 shrink-0">
           {isDesktop && (
@@ -538,8 +538,8 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
           />
         )}
 
-        {/* Query queue */}
-        <QueryQueueBar
+        {/* Queue FAB */}
+        <QueueFab
           items={queryQueue}
           onDequeue={ws.dequeue}
           onExecuteNow={ws.executeNow}

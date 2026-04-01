@@ -151,7 +151,7 @@ export function InputBar({
 
     if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault()
-      if (!isRunning) handleSend()
+      handleSend()
     }
   }
 
@@ -287,7 +287,7 @@ export function InputBar({
         </div>
 
         {/* Send / Abort */}
-        {isRunning ? (
+        {isRunning && (
           <Button
             variant="destructive"
             size="icon"
@@ -297,16 +297,15 @@ export function InputBar({
           >
             <Square className="h-4 w-4" />
           </Button>
-        ) : (
-          <Button
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={handleSend}
-            disabled={disabled || (!text.trim() && images.length === 0)}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
         )}
+        <Button
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={handleSend}
+          disabled={disabled || (!text.trim() && images.length === 0)}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   )
