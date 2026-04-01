@@ -28,9 +28,17 @@ interface Agent {
 
 const RECENTLY_ACTIVE_MS = 10 * 60 * 1000
 
+function formatRelativeTime(ms: number): string {
+  const diff = Date.now() - ms
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return `${Math.floor(diff / 86_400_000)}d ago`
+}
+
 function ActivityRow({ heartbeat }: { heartbeat: ActivityHeartbeat }) {
   const { lastActivityType, lastToolName, textSnippet } = heartbeat
-  if (lastActivityType === 'thinking') {
+  if (lastActivityType === 'thinking' || lastActivityType === 'thinking_delta') {
     return (
       <div className="flex items-center gap-1 pl-6 w-full min-w-0">
         <span className="text-xs shrink-0">💭</span>
@@ -50,7 +58,7 @@ function ActivityRow({ heartbeat }: { heartbeat: ActivityHeartbeat }) {
       </div>
     )
   }
-  if (lastActivityType === 'text' && textSnippet) {
+  if ((lastActivityType === 'text' || lastActivityType === 'text_delta') && textSnippet) {
     return (
       <div className="flex items-center gap-1 pl-6 w-full min-w-0">
         <span className="text-xs shrink-0">💬</span>
@@ -200,6 +208,9 @@ export function AppSidebar({
   const getAgentStatus = (agentId: string) =>
     getProjectStatus(`__agent-${agentId}`)
 
+  const getLastModified = (id: string) =>
+    projectStatuses.find(s => s.projectId === id)?.lastModified
+
   // Merge REST threads with real-time store threads (store wins)
   const mergedThreads = (() => {
     const map = new Map<string, ThreadInfo>()
@@ -296,11 +307,13 @@ export function AppSidebar({
                 {filteredAgents.map(a => {
                   const active = isAgentActive(a.id)
                   const status = getAgentStatus(a.id)
+                  const agentProjectId = `__agent-${a.id}`
+                  const lastModified = getLastModified(agentProjectId)
                   return (
                     <div key={a.id} className="group relative">
                       <button
                         className={cn(
-                          'w-full flex flex-col gap-0.5 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
+                          'w-full flex flex-col gap-0.5 px-2 py-2 rounded-md text-sm text-left transition-colors cursor-pointer',
                           active
                             ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                             : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
@@ -312,13 +325,17 @@ export function AppSidebar({
                           <span className="truncate flex-1">{a.name}</span>
                           {status === 'processing' ? (
                             <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
-                          ) : isRecentlyActive(`__agent-${a.id}`) ? (
+                          ) : isRecentlyActive(agentProjectId) ? (
                             <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
                           ) : null}
                         </div>
-                        {status === 'processing' && activeHeartbeats[`__agent-${a.id}`] && (
-                          <ActivityRow heartbeat={activeHeartbeats[`__agent-${a.id}`]} />
-                        )}
+                        {status === 'processing' && activeHeartbeats[agentProjectId] ? (
+                          <ActivityRow heartbeat={activeHeartbeats[agentProjectId]} />
+                        ) : lastModified ? (
+                          <div className="pl-6 w-full min-w-0">
+                            <span className="text-xs text-muted-foreground/60">{formatRelativeTime(lastModified)}</span>
+                          </div>
+                        ) : null}
                       </button>
                       <button
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -352,11 +369,12 @@ export function AppSidebar({
                 {filteredProjects.map(p => {
                   const status = getProjectStatus(p.id)
                   const isActive = currentProjectId === p.id
+                  const lastModified = getLastModified(p.id)
                   return (
                     <button
                       key={p.id}
                       className={cn(
-                        'w-full flex flex-col gap-0.5 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
+                        'w-full flex flex-col gap-0.5 px-2 py-2 rounded-md text-sm text-left transition-colors cursor-pointer',
                         isActive
                           ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
@@ -372,9 +390,13 @@ export function AppSidebar({
                           <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
                         ) : null}
                       </div>
-                      {status === 'processing' && activeHeartbeats[p.id] && (
+                      {status === 'processing' && activeHeartbeats[p.id] ? (
                         <ActivityRow heartbeat={activeHeartbeats[p.id]} />
-                      )}
+                      ) : lastModified ? (
+                        <div className="pl-6 w-full min-w-0">
+                          <span className="text-xs text-muted-foreground/60">{formatRelativeTime(lastModified)}</span>
+                        </div>
+                      ) : null}
                     </button>
                   )
                 })}
