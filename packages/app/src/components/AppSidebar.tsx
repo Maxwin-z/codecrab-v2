@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams, useLocation } from 'react-router'
 import { useWs } from '@/hooks/WebSocketContext'
 import { useStore } from '@/store/store'
-import { selectProjectStatuses, selectThreads } from '@/store/selectors'
+import { selectProjectStatuses, selectThreads, selectActiveHeartbeats } from '@/store/selectors'
+import type { ActivityHeartbeat } from '@/store/types'
 import { authFetch } from '@/lib/auth'
 import { fetchThreads } from '@/lib/threads'
 import { cn } from '@/lib/utils'
@@ -25,10 +26,49 @@ interface Agent {
   emoji: string
 }
 
+const RECENTLY_ACTIVE_MS = 10 * 60 * 1000
+
+function ActivityRow({ heartbeat }: { heartbeat: ActivityHeartbeat }) {
+  const { lastActivityType, lastToolName, textSnippet } = heartbeat
+  if (lastActivityType === 'thinking') {
+    return (
+      <div className="flex items-center gap-1 pl-6 w-full min-w-0">
+        <span className="text-xs shrink-0">💭</span>
+        <span className="text-xs text-muted-foreground truncate font-mono">
+          {textSnippet ? `...${textSnippet.slice(-60)}` : '...'}
+        </span>
+      </div>
+    )
+  }
+  if (lastActivityType === 'tool_use') {
+    return (
+      <div className="flex items-center gap-1 pl-6 w-full min-w-0">
+        <span className="text-xs shrink-0">🔧</span>
+        <span className="text-xs text-muted-foreground truncate font-mono">
+          {lastToolName ?? 'tool'}
+        </span>
+      </div>
+    )
+  }
+  if (lastActivityType === 'text' && textSnippet) {
+    return (
+      <div className="flex items-center gap-1 pl-6 w-full min-w-0">
+        <span className="text-xs shrink-0">💬</span>
+        <span className="text-xs text-muted-foreground truncate font-mono">
+          {`...${textSnippet.slice(-60)}`}
+        </span>
+      </div>
+    )
+  }
+  return null
+}
+
 export function AppSidebar({
   onUnauthorized,
+  style,
 }: {
   onUnauthorized?: () => void
+  style?: React.CSSProperties
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -36,6 +76,9 @@ export function AppSidebar({
   const { switchProject } = useWs()
   const projectStatuses = useStore(selectProjectStatuses)
   const storeThreads = useStore(selectThreads)
+  const activeHeartbeats = useStore(selectActiveHeartbeats)
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Map<string, number>>(new Map())
+  const prevStatusesRef = useRef<Map<string, string>>(new Map())
   const [projects, setProjects] = useState<Project[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [restThreads, setRestThreads] = useState<ThreadInfo[]>([])
@@ -49,6 +92,43 @@ export function AppSidebar({
   const { theme, toggleTheme } = useTheme()
   const currentProjectId = searchParams.get('project')
   const currentThreadId = searchParams.get('id')
+
+  // Detect processing → idle transitions and record completion time
+  useEffect(() => {
+    const prev = prevStatusesRef.current
+    let changed = false
+    const newMap = new Map(recentlyCompleted)
+    const now = Date.now()
+    for (const { projectId, status } of projectStatuses) {
+      if (prev.get(projectId) === 'processing' && status === 'idle') {
+        newMap.set(projectId, now)
+        changed = true
+      }
+      prev.set(projectId, status)
+    }
+    if (changed) setRecentlyCompleted(newMap)
+  }, [projectStatuses]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear entries after 10 minutes
+  useEffect(() => {
+    const timeouts: ReturnType<typeof setTimeout>[] = []
+    for (const [projectId, completedAt] of recentlyCompleted) {
+      const remaining = RECENTLY_ACTIVE_MS - (Date.now() - completedAt)
+      if (remaining <= 0) {
+        setRecentlyCompleted(prev => { const next = new Map(prev); next.delete(projectId); return next })
+      } else {
+        timeouts.push(setTimeout(() => {
+          setRecentlyCompleted(prev => { const next = new Map(prev); next.delete(projectId); return next })
+        }, remaining))
+      }
+    }
+    return () => timeouts.forEach(clearTimeout)
+  }, [recentlyCompleted])
+
+  const isRecentlyActive = (id: string) => {
+    const t = recentlyCompleted.get(id)
+    return t !== undefined && Date.now() - t < RECENTLY_ACTIVE_MS
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -140,7 +220,7 @@ export function AppSidebar({
   const hasData = projects.length > 0 || agents.length > 0 || mergedThreads.length > 0
 
   return (
-    <aside className="w-56 border-r border-sidebar-border bg-sidebar flex flex-col h-full shrink-0">
+    <aside className="w-56 border-r border-sidebar-border bg-sidebar flex flex-col h-full shrink-0" style={style}>
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-sidebar-border flex items-center justify-between">
         <h2
@@ -220,17 +300,24 @@ export function AppSidebar({
                     <div key={a.id} className="group relative">
                       <button
                         className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
+                          'w-full flex flex-col gap-0.5 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
                           active
                             ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                             : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
                         )}
                         onClick={() => handleSelectAgent(a)}
                       >
-                        <span className="text-base shrink-0">{a.emoji || '🤖'}</span>
-                        <span className="truncate flex-1">{a.name}</span>
-                        {status === 'processing' && (
-                          <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+                        <div className="flex items-center gap-2 w-full min-w-0">
+                          <span className="text-base shrink-0">{a.emoji || '🤖'}</span>
+                          <span className="truncate flex-1">{a.name}</span>
+                          {status === 'processing' ? (
+                            <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+                          ) : isRecentlyActive(`__agent-${a.id}`) ? (
+                            <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                          ) : null}
+                        </div>
+                        {status === 'processing' && activeHeartbeats[`__agent-${a.id}`] && (
+                          <ActivityRow heartbeat={activeHeartbeats[`__agent-${a.id}`]} />
                         )}
                       </button>
                       <button
@@ -269,17 +356,24 @@ export function AppSidebar({
                     <button
                       key={p.id}
                       className={cn(
-                        'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
+                        'w-full flex flex-col gap-0.5 px-2 py-1.5 rounded-md text-sm text-left transition-colors cursor-pointer',
                         isActive
                           ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
                       )}
                       onClick={() => handleSelectProject(p)}
                     >
-                      <span className="text-base shrink-0">{p.icon || '📁'}</span>
-                      <span className="truncate flex-1">{p.name}</span>
-                      {status === 'processing' && (
-                        <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+                      <div className="flex items-center gap-2 w-full min-w-0">
+                        <span className="text-base shrink-0">{p.icon || '📁'}</span>
+                        <span className="truncate flex-1">{p.name}</span>
+                        {status === 'processing' ? (
+                          <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
+                        ) : isRecentlyActive(p.id) ? (
+                          <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                        ) : null}
+                      </div>
+                      {status === 'processing' && activeHeartbeats[p.id] && (
+                        <ActivityRow heartbeat={activeHeartbeats[p.id]} />
                       )}
                     </button>
                   )

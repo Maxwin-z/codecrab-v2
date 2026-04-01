@@ -24,11 +24,10 @@ import {
   FileCode,
   X,
   Download,
-  Image,
-  Code,
   Eye,
   Loader2,
   Paperclip,
+  FolderOpen,
 } from 'lucide-react'
 
 // ── Agent color palette (matches iOS) ──
@@ -290,6 +289,12 @@ function ArtifactViewer({
   const token = getToken()
   const downloadUrl = token ? `${rawUrl}?token=${encodeURIComponent(token)}` : rawUrl
 
+  const openOnComputer = () => {
+    const dir = artifact.path.slice(0, artifact.path.lastIndexOf('/'))
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '') || ''
+    window.open(`${base}/files?path=${encodeURIComponent(dir)}`, '_blank')
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30 shrink-0">
@@ -298,6 +303,13 @@ function ArtifactViewer({
         <span className="text-xs text-muted-foreground shrink-0">
           {artifact.mimeType} &middot; {formatBytes(artifact.size)}
         </span>
+        <button
+          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+          onClick={openOnComputer}
+          title="Open on computer"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+        </button>
         <a
           href={downloadUrl}
           download={artifact.name}
@@ -391,43 +403,6 @@ function ArtifactViewer({
   )
 }
 
-// ── Artifact List Item ──
-
-function ArtifactListItem({
-  artifact,
-  isSelected,
-  onClick,
-}: {
-  artifact: ArtifactInfo
-  isSelected: boolean
-  onClick: () => void
-}) {
-  const icon = isImageMime(artifact.mimeType)
-    ? <Image className="h-4 w-4 text-muted-foreground shrink-0" />
-    : isTextMime(artifact.mimeType) || artifact.mimeType === 'image/svg+xml'
-      ? <Code className="h-4 w-4 text-muted-foreground shrink-0" />
-      : <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-
-  return (
-    <button
-      className={cn(
-        'w-full flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer text-left',
-        isSelected ? 'border-foreground/20 bg-accent/50' : 'border-border hover:bg-accent/30',
-      )}
-      onClick={onClick}
-    >
-      {icon}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{artifact.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {artifact.mimeType} &middot; {formatBytes(artifact.size)} &middot; by @{artifact.createdBy.agentName}
-        </p>
-      </div>
-      <span className="text-xs text-muted-foreground shrink-0">{formatTime(artifact.createdAt)}</span>
-    </button>
-  )
-}
-
 // ── Main Page ──
 
 interface AgentMeta { id: string; name: string; emoji: string }
@@ -443,7 +418,6 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
   const [artifacts, setArtifacts] = useState<ArtifactInfo[]>([])
   const [agentMeta, setAgentMeta] = useState<AgentMeta[]>([])
   const [loading, setLoading] = useState(true)
-  const [showArtifacts, setShowArtifacts] = useState(false)
   const [renderMarkdown, setRenderMarkdown] = useState(true)
   const [viewingArtifact, setViewingArtifact] = useState<ArtifactInfo | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -492,10 +466,7 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
 
   const handleArtifactRefClick = (artifactId: string) => {
     const found = artifacts.find(a => a.id === artifactId)
-    if (found) {
-      setShowArtifacts(true)
-      setViewingArtifact(found)
-    }
+    if (found) setViewingArtifact(found)
   }
 
   if (!threadId) {
@@ -551,14 +522,13 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
           </button>
           {artifacts.length > 0 && (
             <button
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors cursor-pointer',
-                showArtifacts
-                  ? 'bg-accent text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-              )}
-              onClick={() => { setShowArtifacts(!showArtifacts); setViewingArtifact(null) }}
-              title="Artifacts"
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              onClick={() => {
+                const dir = artifacts[0].path.slice(0, artifacts[0].path.lastIndexOf('/'))
+                const base = import.meta.env.BASE_URL.replace(/\/$/, '') || ''
+                window.open(`${base}/files?path=${encodeURIComponent(dir)}`, '_blank')
+              }}
+              title="Open artifacts folder"
             >
               <Paperclip className="h-3.5 w-3.5" />
               {artifacts.length}
@@ -568,7 +538,7 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
       </header>
 
       {/* Messages */}
-      {!showArtifacts && (
+      {!viewingArtifact && (
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
           <div className="py-2 px-3">
             {messages.length === 0 ? (
@@ -654,22 +624,8 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
         </div>
       )}
 
-      {/* Artifacts list */}
-      {showArtifacts && !viewingArtifact && (
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto p-4 space-y-2">
-            {artifacts.map(a => (
-              <ArtifactListItem
-                key={a.id} artifact={a} isSelected={false}
-                onClick={() => setViewingArtifact(a)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Artifact viewer */}
-      {showArtifacts && viewingArtifact && threadId && (
+      {viewingArtifact && threadId && (
         <ArtifactViewer
           artifact={viewingArtifact} threadId={threadId}
           onClose={() => setViewingArtifact(null)} onUnauthorized={onUnauthorized}

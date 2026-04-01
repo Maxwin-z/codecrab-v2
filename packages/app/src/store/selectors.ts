@@ -1,4 +1,4 @@
-import type { StoreState, SessionData, ProjectState, QueueItem, ThreadInfo, AutoResumeBanner } from './types'
+import type { StoreState, SessionData, ProjectState, QueueItem, ThreadInfo, AutoResumeBanner, ActivityHeartbeat } from './types'
 
 // Stable empty references — reused across renders to avoid infinite re-render loops.
 // Zustand uses Object.is to compare selector outputs; returning a new [] or {} each
@@ -89,3 +89,24 @@ export function selectThread(threadId: string | null) {
 
 export const selectAutoResumeBanners = (s: StoreState): AutoResumeBanner[] =>
   s.autoResumeBanners.length === 0 ? EMPTY_BANNERS : s.autoResumeBanners
+
+// Map of projectId → ActivityHeartbeat for all currently-processing sessions.
+// Memoized by projects reference to avoid infinite re-render loops.
+let _activeHbProjectsRef: Record<string, ProjectState> = {}
+let _activeHbCached: Record<string, ActivityHeartbeat> = {}
+
+export const selectActiveHeartbeats = (s: StoreState): Record<string, ActivityHeartbeat> => {
+  if (s.projects === _activeHbProjectsRef) return _activeHbCached
+  _activeHbProjectsRef = s.projects
+  const result: Record<string, ActivityHeartbeat> = {}
+  for (const [projectId, project] of Object.entries(s.projects)) {
+    for (const session of Object.values(project.sessions)) {
+      if (session.status === 'processing' && session.activityHeartbeat) {
+        result[projectId] = session.activityHeartbeat
+        break
+      }
+    }
+  }
+  _activeHbCached = result
+  return result
+}
