@@ -1,0 +1,36 @@
+{
+  "name": "codecrab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered coding engine with pluggable adapters, MCP extensions, and remote access.",
+  "packageManager": "pnpm@10.6.5",
+  "scripts": {
+    "dev": "concurrently -n server,app -c blue,green \"pnpm dev:server\" \"pnpm dev:app\"",
+    "dev:server": "pnpm --filter @codecrab/server dev",
+    "dev:app": "pnpm --filter @codecrab/app dev",
+    "dev:web": "pnpm --filter @codecrab/web dev",
+    "dev:relay": "pnpm --filter @codecrab/relay dev",
+    "start": "bash scripts/start.sh",
+    "stop": "bash scripts/stop.sh",
+    "status": "bash scripts/status.sh",
+    "build": "pnpm -r build",
+    "cli": "npx tsx packages/cli/src/index.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "tsx": "^4.21.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "keywords": [
+    "ai",
+    "coding",
+    "agent",
+    "mcp",
+    "cli"
+  ],
+  "license": "MIT"
+}

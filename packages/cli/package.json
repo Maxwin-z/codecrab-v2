@@ -1,0 +1,30 @@
+{
+  "name": "codecrab",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI-powered coding engine with pluggable adapters, MCP extensions, and remote access.",
+  "bin": {
+    "codecrab": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@codecrab/server": "workspace:*",
+    "@codecrab/shared": "workspace:*"
+  },
+  "keywords": [
+    "ai",
+    "coding",
+    "agent",
+    "mcp",
+    "cli"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
