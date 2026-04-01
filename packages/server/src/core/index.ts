@@ -15,13 +15,13 @@ export class CoreEngine extends EventEmitter {
   readonly threads: ThreadManager
   readonly router: MessageRouter
 
-  constructor(private agent: AgentInterface) {
+  constructor(private agent: AgentInterface, agentsHome: string) {
     super()
     this.setMaxListeners(50) // Many subscribers expected
     this.projects = new ProjectManager()
     this.sessions = new SessionManager()
     this.turns = new TurnManager(this.agent, this.sessions, this)
-    this.agents = new AgentManager(this.projects)
+    this.agents = new AgentManager(this.projects, agentsHome)
     this.threads = new ThreadManager()
     this.router = new MessageRouter(this.threads, this.sessions, this.agents, this)
   }

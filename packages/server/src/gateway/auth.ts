@@ -7,9 +7,12 @@ import type { Request, Response, NextFunction } from 'express'
 const CONFIG_DIR = join(homedir(), '.codecrab')
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
 
+export const DEFAULT_AGENTS_HOME = join(homedir(), 'CodeCrabAgents')
+
 interface Config {
   token?: string
   networkMode?: string
+  agentsHome?: string
 }
 
 let cachedConfig: Config | null = null
@@ -41,6 +44,11 @@ export async function ensureToken(): Promise<string> {
   const token = generateToken()
   await writeConfig({ ...config, token })
   return token
+}
+
+export async function getAgentsHome(): Promise<string> {
+  const config = await readConfig()
+  return config.agentsHome || DEFAULT_AGENTS_HOME
 }
 
 export async function getToken(): Promise<string | null> {

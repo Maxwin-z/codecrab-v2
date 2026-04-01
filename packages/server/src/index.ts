@@ -14,7 +14,7 @@ import { initCronScheduler } from './cron/scheduler.js'
 import { setCronScheduler } from './agent/extensions/cron/tools.js'
 import { setMessageRouter } from './agent/extensions/threads/tools.js'
 import { initPushConsumer, closeApns } from './push/index.js'
-import { ensureToken } from './gateway/auth.js'
+import { ensureToken, getAgentsHome } from './gateway/auth.js'
 
 const require = createRequire(import.meta.url)
 const qrcode = require('qrcode-terminal')
@@ -36,29 +36,33 @@ const PORT = parseInt(process.env.PORT || '4200', 10)
 async function main(): Promise<void> {
   console.log('[CodeCrab v2] Starting...')
 
-  // 1. Create Agent layer
+  // 1. Load agents home from config (or use default)
+  const agentsHome = await getAgentsHome()
+  console.log(`[CodeCrab v2] Agents home: ${agentsHome}`)
+
+  // 2. Create Agent layer
   const agent = new ClaudeAgent()
 
-  // 2. Create Core (pass in Agent)
-  const core = new CoreEngine(agent)
+  // 3. Create Core (pass in Agent + agentsHome)
+  const core = new CoreEngine(agent, agentsHome)
   await core.init()
   console.log(`[CodeCrab v2] Core initialized — ${core.projects.list().length} projects loaded`)
 
-  // 3. Register consumers
+  // 4. Register consumers
   const soulConsumer = initSoul(core)
   const cronScheduler = initCronScheduler(core)
   setCronScheduler(cronScheduler)
   setMessageRouter(core.router)
   initPushConsumer(core)
 
-  // 4. Create Gateway (pass in Core + Cron)
+  // 5. Create Gateway (pass in Core + Cron)
   const { server, broadcaster, heartbeat } = setupGateway(core, { cronScheduler })
 
-  // 5. Ensure auth token
+  // 6. Ensure auth token
   const token = await ensureToken()
   console.log(`[CodeCrab v2] Auth token ready`)
 
-  // 6. Start server
+  // 7. Start server
   server.listen(PORT, '0.0.0.0', () => {
     const localIP = getLocalIP()
     const serverURL = `http://${localIP}:${PORT}`

@@ -172,8 +172,8 @@ export class ProjectManager {
     return config
   }
 
-  /** Update an existing project's name and/or icon. */
-  async update(projectId: string, params: { name?: string; icon?: string }): Promise<ProjectConfig> {
+  /** Update an existing project's name, icon, and/or path. */
+  async update(projectId: string, params: { name?: string; icon?: string; path?: string }): Promise<ProjectConfig> {
     const config = this.projects.get(projectId)
     if (!config) {
       throw new ProjectNotFoundError('Project not found')
@@ -181,6 +181,7 @@ export class ProjectManager {
 
     if (params.name) config.name = params.name
     if (params.icon) config.icon = params.icon
+    if (params.path) config.path = params.path
     config.updatedAt = Date.now()
 
     await this.persist()

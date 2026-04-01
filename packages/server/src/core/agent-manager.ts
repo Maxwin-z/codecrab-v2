@@ -1,13 +1,12 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { homedir } from 'node:os'  // used for CONFIG_DIR (agents.json metadata)
 import type { Agent } from '@codecrab/shared'
 import type { ProjectManager } from './project.js'
 import type { ProjectConfig, PermissionMode } from '../types/index.js'
 
 const CONFIG_DIR = join(homedir(), '.codecrab')
 const AGENTS_FILE = join(CONFIG_DIR, 'agents.json')
-const AGENTS_DIR = join(CONFIG_DIR, 'agents')
 
 const SYSTEM_AGENT_ID = '__system-agent'
 const SYSTEM_AGENT_NAME = 'system-agent'
@@ -56,7 +55,7 @@ async function ensureDir(dir: string) {
 export class AgentManager {
   private agents = new Map<string, Agent>()
 
-  constructor(private projects: ProjectManager) {}
+  constructor(private projects: ProjectManager, private agentsHome: string) {}
 
   async load(): Promise<void> {
     try {
@@ -94,11 +93,23 @@ export class AgentManager {
     // Ensure internal project exists for system-agent
     await this.ensureAgentProject(SYSTEM_AGENT_ID)
 
-    // Ensure editor projects exist for all user agents
+    // Ensure editor projects exist for all user agents, re-syncing paths
     for (const agent of this.agents.values()) {
       if (agent.id !== SYSTEM_AGENT_ID) {
         await this.ensureAgentEditorProject(agent.id)
+        await this.syncAgentProjectPath(agent.id)
       }
+    }
+  }
+
+  /** Re-sync the internal project path for an agent to match current agentsHome */
+  private async syncAgentProjectPath(agentId: string): Promise<void> {
+    const projectId = this.getProjectId(agentId)
+    const project = this.projects.get(projectId)
+    if (!project) return
+    const expectedPath = this.getAgentDir(agentId)
+    if (project.path !== expectedPath) {
+      await this.projects.update(projectId, { path: expectedPath })
     }
   }
 
@@ -109,7 +120,7 @@ export class AgentManager {
   }
 
   private getAgentDir(agentId: string): string {
-    return join(AGENTS_DIR, agentId)
+    return join(this.agentsHome, agentId)
   }
 
   /** List all agents, excluding system-agent */
@@ -286,7 +297,14 @@ export class AgentManager {
   async ensureAgentProject(agentId: string): Promise<ProjectConfig> {
     const projectId = this.getProjectId(agentId)
     const existing = this.projects.get(projectId)
-    if (existing) return existing
+    if (existing) {
+      // Re-sync path in case agentsHome changed
+      const expectedPath = this.getAgentDir(agentId)
+      if (existing.path !== expectedPath) {
+        await this.projects.update(projectId, { path: expectedPath })
+      }
+      return this.projects.get(projectId)!
+    }
 
     const agent = this.agents.get(agentId)
     if (!agent) throw new AgentNotFoundError('Agent not found')
