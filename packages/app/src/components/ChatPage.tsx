@@ -9,7 +9,6 @@ import { cn, formatDuration, formatCost } from '@/lib/utils'
 import { MessageList, groupAssistantMessages } from './MessageList'
 import { InputBar, type MentionableAgent } from './InputBar'
 import { SessionSidebar } from './SessionSidebar'
-import { ThreadPanel } from './ThreadPanel'
 import { AgentActivityBanner } from './AgentActivityBanner'
 import { PermissionRequestUI } from './PermissionRequestUI'
 import { UserQuestionForm } from './UserQuestionForm'
@@ -30,7 +29,6 @@ import {
   Cpu,
   Zap,
   Shield,
-  GitBranch,
   Save,
   Pencil,
   Check,
@@ -84,7 +82,6 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
 
   const [project, setProject] = useState<ProjectInfo | null>(null)
   const [showSessions, setShowSessions] = useState(false)
-  const [showThreads, setShowThreads] = useState(false)
   const [providers, setProviders] = useState<ProviderOption[]>([])
   const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
   const [agents, setAgents] = useState<MentionableAgent[]>([])
@@ -343,10 +340,6 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
         />
       )}
 
-      {/* Thread panel (toggleable) */}
-      {isDesktop && showThreads && (
-        <ThreadPanel onClose={() => setShowThreads(false)} onUnauthorized={onUnauthorized} />
-      )}
 
 {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -363,15 +356,6 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setShowThreads(!showThreads)}
-            title="Toggle thread panel"
-          >
-            <GitBranch className={cn('h-4 w-4', showThreads && 'text-foreground')} />
-          </Button>
 
           <Button
             variant="ghost"
