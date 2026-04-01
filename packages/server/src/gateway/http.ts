@@ -67,7 +67,7 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
   })
 
   router.get('/api/discovery', (_req: Request, res: Response) => {
-    res.json({ service: 'codecrab', version: '2.0.0' })
+    res.json({ service: 'CodeCrab', version: '2.0.0' })
   })
 
   router.get('/api/auth/status', async (_req: Request, res: Response) => {
