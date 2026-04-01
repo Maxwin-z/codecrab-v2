@@ -6,13 +6,16 @@ const HELP = `
   codecrab v${VERSION} — AI-powered coding engine
 
   Usage:
-    codecrab init              Initialize: generate token, start server, open browser
-    codecrab start             Start the server
-    codecrab start --open      Start the server and open browser
-    codecrab token             Show the current access token
-    codecrab token refresh     Generate a new access token
-    codecrab --help            Show this help message
-    codecrab --version         Show version
+    codecrab init                          Initialize: generate token, start server, open browser
+    codecrab start                         Start the server
+    codecrab start --open                  Start the server and open browser
+    codecrab token                         Show the current access token
+    codecrab token refresh                 Generate a new access token
+    codecrab agents-home                   Show current agents home directory
+    codecrab agents-home set <path>        Change agents home directory
+    codecrab agents-home set <path> --migrate   Change and migrate existing agents
+    codecrab --help                        Show this help message
+    codecrab --version                     Show version
 `
 
 async function main() {
@@ -35,6 +38,12 @@ async function main() {
     case 'token': {
       const { token } = await import('./commands/token.js')
       await token({ refresh: args[1] === 'refresh' })
+      break
+    }
+
+    case 'agents-home': {
+      const { agentsHome } = await import('./commands/agents-home.js')
+      await agentsHome(args.slice(1))
       break
     }
 
