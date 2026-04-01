@@ -72,10 +72,12 @@ export function FileBrowserPanel({
   projectPath,
   onUnauthorized,
   fullPage = false,
+  onNavigate,
 }: {
   projectPath: string
   onUnauthorized?: () => void
   fullPage?: boolean
+  onNavigate?: (path: string) => void
 }) {
   const [currentPath, setCurrentPath] = useState(projectPath)
   const [items, setItems] = useState<FileEntry[]>([])
@@ -83,6 +85,7 @@ export function FileBrowserPanel({
   const [searchText, setSearchText] = useState('')
   const [showHidden, setShowHidden] = useState(false)
   const [navStack, setNavStack] = useState<string[]>([])
+  const [historyDepth, setHistoryDepth] = useState(0)
 
   const loadDir = useCallback(async (dirPath: string) => {
     setLoading(true)
@@ -109,17 +112,29 @@ export function FileBrowserPanel({
   }, [showHidden])
 
   const navigateTo = (path: string) => {
-    setNavStack(prev => [...prev, currentPath])
-    loadDir(path)
+    if (onNavigate) {
+      setHistoryDepth(d => d + 1)
+      onNavigate(path)
+    } else {
+      setNavStack(prev => [...prev, currentPath])
+      loadDir(path)
+    }
   }
 
   const goBack = () => {
-    const prev = navStack[navStack.length - 1]
-    if (prev !== undefined) {
-      setNavStack(s => s.slice(0, -1))
-      loadDir(prev)
+    if (onNavigate) {
+      setHistoryDepth(d => Math.max(0, d - 1))
+      window.history.back()
+    } else {
+      const prev = navStack[navStack.length - 1]
+      if (prev !== undefined) {
+        setNavStack(s => s.slice(0, -1))
+        loadDir(prev)
+      }
     }
   }
+
+  const canGoBack = onNavigate ? historyDepth > 0 : navStack.length > 0
 
   const filteredDirs = items.filter(i => i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase())))
   const filteredFiles = items.filter(i => !i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase())))
@@ -133,7 +148,7 @@ export function FileBrowserPanel({
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          disabled={navStack.length === 0}
+          disabled={!canGoBack}
           onClick={goBack}
         >
           <ChevronLeft className="h-3.5 w-3.5" />
