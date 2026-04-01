@@ -6,7 +6,8 @@
   "description": "CodeCrab server — four-layer architecture (Gateway/Core/Agent/Soul+Cron)",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/start.ts",
+    "./auth": "./src/gateway/auth.ts"
   },
   "scripts": {
     "dev": "nodemon --watch src --ext ts --signal SIGTERM --exec 'tsx src/index.ts'",
