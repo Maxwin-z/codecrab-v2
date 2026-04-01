@@ -243,6 +243,12 @@ function FileRow({ item, onClick }: { item: FileEntry; onClick: () => void }) {
     setMenu(null)
   }
 
+  const openOnComputer = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setMenu(null)
+    authFetch('/api/files/open', { method: 'POST', body: JSON.stringify({ path: item.path }), headers: { 'Content-Type': 'application/json' } })
+  }
+
   return (
     <>
       <button
@@ -265,6 +271,12 @@ function FileRow({ item, onClick }: { item: FileEntry; onClick: () => void }) {
           style={{ left: menu.x, top: menu.y }}
           onClick={e => e.stopPropagation()}
         >
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
+            onClick={openOnComputer}
+          >
+            Open on computer
+          </button>
           <button
             className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
             onClick={copyPath}

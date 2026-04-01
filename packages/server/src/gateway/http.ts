@@ -1057,6 +1057,23 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
     }
   })
 
+  router.post('/api/files/open', async (req: Request, res: Response) => {
+    const { path: filePath } = req.body as { path?: string }
+    if (!filePath) {
+      res.status(400).json({ error: 'Missing path' })
+      return
+    }
+    const resolved = path.resolve(filePath)
+    try {
+      const platform = process.platform
+      const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'explorer' : 'xdg-open'
+      await execFileAsync(cmd, [resolved])
+      res.json({ success: true })
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message })
+    }
+  })
+
   // ====== Threads API ======
 
   // Raw artifact download — registered before authMiddleware because
