@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { authFetch } from '@/lib/auth'
 import { buildApiUrl } from '@/lib/server'
@@ -61,28 +61,58 @@ export function FilePathLink({
 
   const dir = getDirPath(path)
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || ''
-  const href = `${base}/files?path=${encodeURIComponent(dir)}`
+  const fileHref = `${base}/file-preview?path=${encodeURIComponent(path)}`
+  const dirHref = `${base}/files?path=${encodeURIComponent(dir)}`
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    window.open(href, '_blank')
+    window.open(fileHref, '_blank')
+  }
+
+  const handleOpenDir = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    window.open(dirHref, '_blank')
+  }
+
+  const handleOpenNative = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    authFetch(buildApiUrl('/api/files/open'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    }).catch(() => {})
   }
 
   return (
-    <a
-      href={href}
-      onClick={handleClick}
-      title={`Open directory: ${dir}`}
-      className={cn(
-        'inline-flex items-center gap-0.5 font-mono text-[0.85em] break-all',
-        'text-blue-500 hover:text-blue-400 underline underline-offset-2 cursor-pointer',
-        status === 'loading' && 'opacity-50',
-        extraClass,
-      )}
-    >
-      {path}
-      <FolderOpen className="inline h-3 w-3 ml-0.5 shrink-0 opacity-60" />
-    </a>
+    <span className={cn('inline-flex items-center gap-0.5 font-mono text-[0.85em]', extraClass)}>
+      <a
+        href={fileHref}
+        onClick={handleClick}
+        title={`Open file: ${path}`}
+        className={cn(
+          'break-all text-blue-500 hover:text-blue-400 underline underline-offset-2 cursor-pointer',
+          status === 'loading' && 'opacity-50',
+        )}
+      >
+        {path}
+      </a>
+      <button
+        onClick={handleOpenDir}
+        title={`Go to directory: ${dir}`}
+        className="shrink-0 opacity-50 hover:opacity-100 cursor-pointer text-blue-500 hover:text-blue-400 ml-0.5"
+      >
+        <FolderOpen className="h-3 w-3" />
+      </button>
+      <button
+        onClick={handleOpenNative}
+        title="Open on this computer"
+        className="shrink-0 opacity-50 hover:opacity-100 cursor-pointer text-muted-foreground hover:text-foreground"
+      >
+        <Monitor className="h-3 w-3" />
+      </button>
+    </span>
   )
 }
