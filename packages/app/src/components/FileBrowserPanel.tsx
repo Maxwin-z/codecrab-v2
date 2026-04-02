@@ -14,6 +14,9 @@ import {
   File,
   Eye,
   EyeOff,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react'
 
 interface FileEntry {
@@ -40,6 +43,17 @@ function getFileIcon(name: string, isDirectory: boolean) {
   if (['md', 'txt', 'json', 'yaml', 'yml', 'toml', 'xml', 'env', 'lock'].includes(ext))
     return <FileText className="h-4 w-4 text-emerald-500 shrink-0" />
   return <File className="h-4 w-4 text-muted-foreground shrink-0" />
+}
+
+function formatModifiedAt(ts?: number): string {
+  if (!ts) return ''
+  const date = new Date(ts * 1000)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / 86400000)
+  if (diffDays === 0) return date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (diffDays < 7) return `${diffDays}d ago`
+  if (date.getFullYear() === now.getFullYear()) return date.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString('en', { year: '2-digit', month: 'short', day: 'numeric' })
 }
 
 function formatSize(bytes: number): string {
@@ -86,6 +100,25 @@ export function FileBrowserPanel({
   const [showHidden, setShowHidden] = useState(false)
   const [navStack, setNavStack] = useState<string[]>([])
   const [historyDepth, setHistoryDepth] = useState(0)
+  const [sortBy, setSortBy] = useState<'name' | 'modified'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+
+  const toggleSort = (field: 'name' | 'modified') => {
+    if (sortBy === field) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortOrder('asc')
+    }
+  }
+
+  const sortItems = (list: FileEntry[]) =>
+    [...list].sort((a, b) => {
+      const cmp = sortBy === 'name'
+        ? a.name.localeCompare(b.name)
+        : (a.modifiedAt ?? 0) - (b.modifiedAt ?? 0)
+      return sortOrder === 'asc' ? cmp : -cmp
+    })
 
   const loadDir = useCallback(async (dirPath: string) => {
     setLoading(true)
@@ -136,8 +169,8 @@ export function FileBrowserPanel({
 
   const canGoBack = onNavigate ? historyDepth > 0 : navStack.length > 0
 
-  const filteredDirs = items.filter(i => i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase())))
-  const filteredFiles = items.filter(i => !i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase())))
+  const filteredDirs = sortItems(items.filter(i => i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase()))))
+  const filteredFiles = sortItems(items.filter(i => !i.isDirectory && (searchText === '' || i.name.toLowerCase().includes(searchText.toLowerCase()))))
   const breadcrumbs = buildBreadcrumbs(currentPath)
 
   return (
@@ -200,6 +233,30 @@ export function FileBrowserPanel({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Sort controls */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0">
+        <span className="text-[10px] text-muted-foreground/50 mr-0.5">Sort:</span>
+        {(['name', 'modified'] as const).map(field => (
+          <button
+            key={field}
+            onClick={() => toggleSort(field)}
+            className={cn(
+              'flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded transition-colors',
+              sortBy === field
+                ? 'bg-muted text-foreground font-medium'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+            )}
+          >
+            {field === 'name' ? 'Name' : 'Modified'}
+            {sortBy === field
+              ? sortOrder === 'asc'
+                ? <ArrowUp className="h-2.5 w-2.5" />
+                : <ArrowDown className="h-2.5 w-2.5" />
+              : <ArrowUpDown className="h-2.5 w-2.5 opacity-40" />}
+          </button>
+        ))}
       </div>
 
       {/* File list */}
@@ -273,11 +330,16 @@ function FileRow({ item, onClick }: { item: FileEntry; onClick: () => void }) {
       >
         {getFileIcon(item.name, item.isDirectory)}
         <span className="flex-1 text-xs truncate">{item.name}</span>
-        {item.isDirectory ? (
-          <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-        ) : item.size !== undefined ? (
-          <span className="text-[10px] text-muted-foreground/60 shrink-0">{formatSize(item.size)}</span>
-        ) : null}
+        <div className="flex items-center gap-1 shrink-0">
+          {item.modifiedAt !== undefined && (
+            <span className="text-[10px] text-muted-foreground/50">{formatModifiedAt(item.modifiedAt)}</span>
+          )}
+          {item.isDirectory
+            ? <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+            : item.size !== undefined
+              ? <span className="text-[10px] text-muted-foreground/40">{formatSize(item.size)}</span>
+              : null}
+        </div>
       </button>
       {menu && (
         <div
