@@ -9,6 +9,7 @@ struct ProjectListView: View {
     @State private var isLoading = false
     @State private var cardRefreshID = UUID()
     @State private var editingProject: Project?
+    @State private var agentToEditNameAvatar: Agent?
     @State private var showCopiedToast = false
 
     private var selectedProjectId: String? {
@@ -70,9 +71,14 @@ struct ProjectListView: View {
                         .listRowBackground(Color.clear)
                         .contextMenu {
                             Button {
+                                agentToEditNameAvatar = agent
+                            } label: {
+                                Label("Edit Name & Avatar", systemImage: "person.crop.circle")
+                            }
+                            Button {
                                 Task { await startEditingAgent(agent) }
                             } label: {
-                                Label("Edit", systemImage: "pencil")
+                                Label("Edit Role Definition", systemImage: "pencil")
                             }
                             Divider()
                             Button(role: .destructive) {
@@ -195,6 +201,15 @@ struct ProjectListView: View {
             EditProjectSheet(project: project) { updated in
                 if let idx = projects.firstIndex(where: { $0.id == updated.id }) {
                     projects[idx] = updated
+                }
+            }
+        }
+        .sheet(item: $agentToEditNameAvatar) { agent in
+            NavigationView {
+                EditAgentNameAvatarView(agent: agent) { updated in
+                    if let idx = agents.firstIndex(where: { $0.id == updated.id }) {
+                        agents[idx] = updated
+                    }
                 }
             }
         }
