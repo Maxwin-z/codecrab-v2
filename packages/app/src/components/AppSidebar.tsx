@@ -328,7 +328,7 @@ export function AppSidebar({
                         onClick={() => handleSelectAgent(a)}
                       >
                         <div className="flex items-center gap-2 w-full min-w-0">
-                          <AgentAvatar value={a.emoji || '🤖'} size="sm" />
+                          <AgentAvatar value={a.emoji || '🤖'} size="md" />
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="truncate">{a.name}</span>
                             {a.description && (

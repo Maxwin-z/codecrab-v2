@@ -1,11 +1,11 @@
 import { cn } from '@/lib/utils'
 
-const SIZE_IMG = { sm: 'w-5 h-5', md: 'w-9 h-9', lg: 'w-16 h-16' }
-const SIZE_FONT = { sm: 'text-base', md: 'text-lg', lg: 'text-5xl' }
+const SIZE_IMG = { sm: 'w-6 h-6', md: 'w-8 h-8', lg: 'w-9 h-9', xl: 'w-16 h-16' }
+const SIZE_FONT = { sm: 'text-lg', md: 'text-xl', lg: 'text-2xl', xl: 'text-5xl' }
 
 interface AgentAvatarProps {
   value: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }
 
