@@ -479,9 +479,7 @@ struct AgentCard: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(agent.emoji)
-                .font(.system(size: 28))
-                .frame(width: 40, height: 40)
+            AgentAvatarView(emoji: agent.emoji, size: 40)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(agent.name)

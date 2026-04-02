@@ -8,22 +8,13 @@ struct CreateAgentView: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
 
-    let emojis = ["🤖","✍️","🎬","🔍","📊","🌐","📝","🎨","💻","📱",
-        "🧠","🎯","📚","🔬","🎵","🏗️","💡","🔒","🌈","⚡",
-        "🚀","🦀","🐍","🦊","🐳","🐧","🦅","🐝","🦋","🍎",
-        "💎","🔮","🎪","🏰","🎲","🧩","🔭","🧪","⚙️","🛠️",
-        "📡","🗂️","📦","🏷️","✏️","🗃️","💼","🎓","🌍","🌙",
-        "☀️","⛅","🌊","🔥","💧","🌿","🍀","🌸","🌺","🎸"]
-
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
 
-            // Emoji display
+            // Avatar display
             Button(action: { showEmojiPicker = true }) {
-                Text(selectedEmoji)
-                    .font(.system(size: 72))
-                    .frame(width: 120, height: 120)
+                AgentAvatarView(emoji: selectedEmoji, size: 120)
                     .background(Color(UIColor.secondarySystemBackground))
                     .cornerRadius(24)
             }
@@ -77,29 +68,7 @@ struct CreateAgentView: View {
         .navigationTitle("New Agent")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showEmojiPicker) {
-            NavigationView {
-                ScrollView {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 20) {
-                        ForEach(emojis, id: \.self) { emoji in
-                            Button(action: {
-                                selectedEmoji = emoji
-                                showEmojiPicker = false
-                            }) {
-                                Text(emoji).font(.largeTitle)
-                            }
-                        }
-                    }
-                    .padding()
-                }
-                .navigationTitle("Choose Emoji")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { showEmojiPicker = false }
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
+            AvatarPickerSheet(selectedEmoji: $selectedEmoji)
         }
     }
 
