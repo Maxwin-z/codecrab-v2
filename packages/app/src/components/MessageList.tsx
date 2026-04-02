@@ -10,8 +10,73 @@ import {
   Brain,
   AlertCircle,
   Bot,
+  Scissors,
 } from 'lucide-react'
 import type { ChatMsg, ContentBlock } from '@/store/types'
+import { FilePathLink } from './FilePathLink'
+
+// Matches absolute paths with at least 2 segments, not preceded by : or word char (avoids URLs)
+const FILE_PATH_RE = /(?<![:\w/])(\/[^\s"'`<>()[\]{},\\]+(?:\/[^\s"'`<>()[\]{},\\]*)+)/g
+
+/**
+ * Rehype plugin that wraps absolute file paths in text nodes with a marker span,
+ * skipping <a>, <code>, and <pre> elements.
+ */
+function rehypeFilePaths() {
+  function processNode(node: any, skip: boolean): any[] {
+    if (node.type === 'text') {
+      if (skip) return [node]
+      const text: string = node.value
+      const parts: any[] = []
+      let last = 0
+      FILE_PATH_RE.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = FILE_PATH_RE.exec(text)) !== null) {
+        const raw = m[1].replace(/[.,;:!?]+$/, '') // strip trailing punctuation
+        if (!raw) continue
+        if (m.index > last) parts.push({ type: 'text', value: text.slice(last, m.index) })
+        parts.push({
+          type: 'element',
+          tagName: 'span',
+          properties: { className: ['file-path-link'] },
+          children: [{ type: 'text', value: raw }],
+        })
+        last = m.index + m[0].length
+      }
+      if (parts.length === 0) return [node]
+      if (last < text.length) parts.push({ type: 'text', value: text.slice(last) })
+      return parts
+    }
+    if (node.type === 'element') {
+      const childSkip = skip || ['a', 'code', 'pre'].includes(node.tagName)
+      const newChildren = node.children?.flatMap((c: any) => processNode(c, childSkip)) ?? []
+      return [{ ...node, children: newChildren }]
+    }
+    return [node]
+  }
+
+  return (tree: any) => {
+    tree.children = tree.children?.flatMap((c: any) => processNode(c, false)) ?? []
+  }
+}
+
+/** Custom ReactMarkdown components that render file-path marker spans as FilePathLink. */
+const mdComponents = {
+  span: (props: any) => {
+    const cls: string = Array.isArray(props.className)
+      ? props.className.join(' ')
+      : (props.className ?? '')
+    if (cls.includes('file-path-link')) {
+      // children is the path string
+      const path = typeof props.children === 'string'
+        ? props.children
+        : String(props.children ?? '')
+      return <FilePathLink path={path} />
+    }
+    const { className, children, ...rest } = props
+    return <span className={className} {...rest}>{children}</span>
+  },
+}
 
 /**
  * Group consecutive assistant messages into one message with ordered blocks.
@@ -112,12 +177,27 @@ function getToolSummary(tc: ToolLike): string {
   }
 }
 
+/** Returns the full file path for file-related tools, or null for others. */
+function getToolFilePath(tc: ToolLike): string | null {
+  const input = tc.input as Record<string, unknown> | undefined
+  if (!input || typeof input !== 'object') return null
+  switch (tc.name) {
+    case 'Read':
+    case 'Edit':
+    case 'Write':
+      return String(input.file_path ?? '') || null
+    default:
+      return null
+  }
+}
+
 function ToolCallBlock({ tc }: { tc: ToolLike }) {
   const [expanded, setExpanded] = useState(false)
   const inputStr = typeof tc.input === 'string'
     ? tc.input
     : JSON.stringify(tc.input, null, 2)
   const summary = getToolSummary(tc)
+  const filePath = getToolFilePath(tc)
 
   return (
     <div className="my-1 border border-border/50 rounded-md overflow-hidden">
@@ -128,8 +208,13 @@ function ToolCallBlock({ tc }: { tc: ToolLike }) {
         {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
         <Wrench className="h-3 w-3 text-muted-foreground shrink-0" />
         <code className="font-medium shrink-0">{tc.name}</code>
-        {summary && (
+        {summary && !filePath && (
           <span className="text-muted-foreground truncate min-w-0">{summary}</span>
+        )}
+        {filePath && (
+          <span className="min-w-0 truncate" onClick={e => e.stopPropagation()}>
+            <FilePathLink path={filePath} className="text-[0.75rem]" />
+          </span>
         )}
         {tc.isError && <AlertCircle className="h-3 w-3 text-destructive ml-auto shrink-0" />}
         {tc.result !== undefined && !tc.isError && (
@@ -192,7 +277,7 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
 function TextBlock({ content }: { content: string }) {
   return (
     <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
         {stripMetaTags(content)}
       </ReactMarkdown>
     </div>
@@ -212,7 +297,45 @@ function renderBlock(block: ContentBlock, index: number) {
   }
 }
 
+const CONTEXT_COMPRESSION_PREFIX = 'This session is being continued from a previous conversation that ran out of context.'
+
+function isContextCompressionMsg(msg: ChatMsg): boolean {
+  return msg.role === 'user' && typeof msg.content === 'string' && msg.content.startsWith(CONTEXT_COMPRESSION_PREFIX)
+}
+
+function ContextCompressionDivider({ msg }: { msg: ChatMsg }) {
+  const [expanded, setExpanded] = useState(false)
+  // Extract the summary portion after the prefix
+  const summary = typeof msg.content === 'string' ? msg.content.slice(CONTEXT_COMPRESSION_PREFIX.length).trim() : ''
+
+  return (
+    <div className="my-4">
+      <button
+        className="w-full flex items-center gap-2 group"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex-1 h-px bg-border" />
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/40 border border-border/60 rounded-full px-3 py-1 shrink-0 group-hover:bg-muted/70 transition-colors cursor-pointer">
+          <Scissors className="h-3 w-3" />
+          <span>上下文已压缩</span>
+          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        </div>
+        <div className="flex-1 h-px bg-border" />
+      </button>
+      {expanded && summary && (
+        <div className="mt-2 mx-2 text-xs text-muted-foreground bg-muted/20 border border-border/40 rounded-md p-3 whitespace-pre-wrap max-h-64 overflow-y-auto">
+          {summary}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MessageBubble({ msg }: { msg: ChatMsg }) {
+  if (isContextCompressionMsg(msg)) {
+    return <ContextCompressionDivider msg={msg} />
+  }
+
   if (msg.role === 'system') {
     return (
       <div className="flex justify-center my-2">
@@ -275,7 +398,7 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
                 {isUser ? (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 ) : (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
                     {stripMetaTags(msg.content)}
                   </ReactMarkdown>
                 )}
@@ -332,7 +455,7 @@ function StreamingIndicator({
 
         {streamingText ? (
           <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
               {stripMetaTags(streamingText)}
             </ReactMarkdown>
           </div>

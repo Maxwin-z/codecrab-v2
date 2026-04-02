@@ -162,13 +162,17 @@ export function AppSidebar({
     loadData()
   }, [loadData, location.pathname])
 
+  const getLastModified = (id: string) =>
+    projectStatuses.find(s => s.projectId === id)?.lastModified
+
   const filterLower = filter.toLowerCase()
-  const filteredProjects = projects.filter(p =>
-    p.name.toLowerCase().includes(filterLower),
-  )
-  const filteredAgents = agents.filter(a =>
-    a.name.toLowerCase().includes(filterLower),
-  )
+  const filteredProjects = projects
+    .filter(p => p.name.toLowerCase().includes(filterLower))
+    .sort((a, b) => (getLastModified(b.id) ?? 0) - (getLastModified(a.id) ?? 0))
+
+  const filteredAgents = agents
+    .filter(a => a.name.toLowerCase().includes(filterLower))
+    .sort((a, b) => (getLastModified(`__agent-${b.id}`) ?? 0) - (getLastModified(`__agent-${a.id}`) ?? 0))
 
   const handleSelectProject = (p: Project) => {
     switchProject(p.id)
@@ -207,9 +211,6 @@ export function AppSidebar({
 
   const getAgentStatus = (agentId: string) =>
     getProjectStatus(`__agent-${agentId}`)
-
-  const getLastModified = (id: string) =>
-    projectStatuses.find(s => s.projectId === id)?.lastModified
 
   // Merge REST threads with real-time store threads (store wins)
   const mergedThreads = (() => {

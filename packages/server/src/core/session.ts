@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { listSessions as sdkListSessions, getSessionMessages as sdkGetSessionMessages } from '@anthropic-ai/claude-agent-sdk'
+import { listSessions as sdkListSessions } from '@anthropic-ai/claude-agent-sdk'
 import type { SessionInfo, ChatMessage } from '@codecrab/shared'
 import type { SessionMeta, ProjectConfig, PermissionMode, SessionUsage } from '../types/index.js'
 import { createEmptyUsage } from '../types/index.js'
@@ -137,21 +137,36 @@ export class SessionManager {
   }
 
   /**
-   * Get session history as ChatMessage[] using SDK's getSessionMessages.
-   * Converts SDK transcript messages into the app's ChatMessage format.
+   * Get session history by reading the JSONL file directly.
+   * Unlike sdkGetSessionMessages, this returns the full history including
+   * messages before any context-compression (compact) point.
    */
   async getHistory(sessionId: string, projectPath?: string): Promise<ChatMessage[]> {
-    const sdkMessages = await sdkGetSessionMessages(sessionId, {
-      dir: projectPath,
-    })
+    const jsonlPath = this.resolveJsonlPath(sessionId, projectPath)
+    let raw: string
+    try {
+      raw = await readFile(jsonlPath, 'utf-8')
+    } catch {
+      return []
+    }
 
-    if (!sdkMessages || sdkMessages.length === 0) return []
+    const lines = raw.split('\n').filter(Boolean)
+    const sdkMessages: Array<{ type: string; uuid: string; message: any }> = []
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line)
+        if (obj.type === 'user' || obj.type === 'assistant') {
+          sdkMessages.push({ type: obj.type, uuid: obj.uuid ?? '', message: obj.message })
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+
+    if (sdkMessages.length === 0) return []
 
     const messages: ChatMessage[] = []
-    // Track tool_use blocks from assistant messages so we can attach results
     const toolUseMap = new Map<string, { msgIndex: number; toolIndex: number }>()
-    // Use incremental timestamps so clients can order and group messages correctly.
-    // SDK doesn't provide per-message timestamps, so we synthesize them.
     const baseTimestamp = Date.now()
     let msgCounter = 0
 
@@ -180,7 +195,6 @@ export class SessionManager {
           }
         }
 
-        // Strip meta tags from text
         text = text
           .replace(/\n?\[SUMMARY:\s*.+\]\s*$/m, '')
           .replace(/\n?\[SUGGESTIONS:\s*.+\]\s*$/m, '')
@@ -198,12 +212,10 @@ export class SessionManager {
           timestamp: baseTimestamp + (msgCounter++),
         })
 
-        // Index tool calls for result matching
         for (let i = 0; i < toolCalls.length; i++) {
           toolUseMap.set(toolCalls[i].id, { msgIndex, toolIndex: i })
         }
       } else if (sdkMsg.type === 'user') {
-        // content.content can be a plain string or an array of content blocks
         const rawContent = content.content
         const blocks = Array.isArray(rawContent) ? rawContent : []
 
@@ -212,7 +224,6 @@ export class SessionManager {
           if (block.type === 'text' && block.text) {
             text += (text ? '\n' : '') + block.text
           } else if (block.type === 'tool_result') {
-            // Attach result to the corresponding tool call
             const ref = toolUseMap.get(block.tool_use_id)
             if (ref) {
               const msg = messages[ref.msgIndex]
@@ -229,7 +240,6 @@ export class SessionManager {
           }
         }
 
-        // Only add user text messages (not pure tool_result messages)
         if (text) {
           messages.push({
             id: sdkMsg.uuid || `msg-${messages.length}`,
@@ -242,6 +252,25 @@ export class SessionManager {
     }
 
     return messages
+  }
+
+  /**
+   * Resolve the JSONL file path for a session.
+   * Claude Code stores sessions at: ~/.claude/projects/<encoded-path>/<sessionId>.jsonl
+   * where <encoded-path> is the project path with all '/' replaced by '-'.
+   */
+  private resolveJsonlPath(sessionId: string, projectPath?: string): string {
+    const claudeDir = join(homedir(), '.claude', 'projects')
+    if (projectPath) {
+      const encoded = projectPath.replace(/\//g, '-')
+      return join(claudeDir, encoded, `${sessionId}.jsonl`)
+    }
+    // Fallback: look up from in-memory meta
+    const meta = this.metas.get(sessionId)
+    if (meta) {
+      // projectPath not provided but meta doesn't carry it — caller should pass it
+    }
+    return join(claudeDir, `${sessionId}.jsonl`)
   }
 
   /** Update session metadata */
