@@ -501,9 +501,12 @@ struct AgentCard: View {
                     .font(.headline)
                     .foregroundColor(isSelected ? .accentColor : .primary)
                     .lineLimit(1)
-                Text("Agent")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if let desc = agent.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()

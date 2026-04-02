@@ -4,6 +4,7 @@ struct Agent: Codable, Identifiable, Hashable, Equatable {
     let id: String
     let name: String
     let emoji: String
+    let description: String?
     let createdAt: Double
     let updatedAt: Double
 

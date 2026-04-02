@@ -68,6 +68,13 @@ struct SessionListView: View {
                     NavigationLink(value: ChatRoute(project: project, sessionId: session.sessionId)) {
                         SessionRowView(session: session, now: now, isProcessing: isProcessing, isRecentlyActive: isRecentlyActive, providerName: session.providerId.flatMap { providerNames[$0] })
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteSession(session)
+                        } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
@@ -85,9 +92,11 @@ struct SessionListView: View {
         .refreshable {
             await fetchSessions()
         }
-        .task {
-            await fetchSessions()
-            await fetchProviders()
+        .onAppear {
+            Task {
+                await fetchSessions()
+                await fetchProviders()
+            }
         }
         .onReceive(timer) { _ in
             now = Date()
@@ -111,6 +120,22 @@ struct SessionListView: View {
             print("Failed to fetch sessions: \(error)")
         }
         if !silent { isLoading = false }
+    }
+
+    private func deleteSession(_ session: SessionInfo) {
+        Task {
+            do {
+                try await APIClient.shared.request(
+                    path: "/api/sessions/\(session.sessionId)",
+                    method: "DELETE"
+                )
+                withAnimation {
+                    sessions.removeAll { $0.sessionId == session.sessionId }
+                }
+            } catch {
+                print("Failed to delete session: \(error)")
+            }
+        }
     }
 
     private func fetchProviders() async {

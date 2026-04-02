@@ -5,6 +5,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import type { CoreEngine } from '../core/index.js'
 import type { CronScheduler } from '../cron/scheduler.js'
 import type { CronJob } from '../types/index.js'
@@ -167,6 +168,29 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
       res.send(data)
     } catch {
       res.status(404).json({ error: 'Image not found' })
+    }
+  })
+
+  // ====== Role avatars (public static assets) ======
+  // Avatars live in packages/app/public/avatars/ — serve them from the server so
+  // native iOS clients (which connect to the API server, not the web app) can load them.
+  const __avatarsDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..', '..', '..', '..',
+    'packages', 'app', 'public', 'avatars',
+  )
+
+  router.get('/avatars/:filename', async (req: Request, res: Response) => {
+    const filename = (req.params.filename as string).replace(/[^a-zA-Z0-9._-]/g, '')
+    const filepath = path.join(__avatarsDir, filename)
+    try {
+      const data = await fs.readFile(filepath)
+      const ext = filename.split('.').pop() || ''
+      res.setHeader('Content-Type', MIME_MAP[ext] || 'application/octet-stream')
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.send(data)
+    } catch {
+      res.status(404).json({ error: 'Avatar not found' })
     }
   })
 
