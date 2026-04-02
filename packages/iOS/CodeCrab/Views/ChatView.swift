@@ -328,6 +328,40 @@ struct ChatView: View {
 
     @ViewBuilder
     private var bottomControlsSection: some View {
+        // Session Paused Banner
+        if wsService.sessionPaused {
+            HStack(spacing: 10) {
+                Image(systemName: "pause.circle.fill")
+                    .foregroundColor(.yellow)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Session Paused")
+                        .font(.subheadline.weight(.semibold))
+                    Text(pauseReasonLabel(wsService.pauseReason))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if let prompt = wsService.pausedPrompt, !prompt.isEmpty {
+                        Text(prompt.count > 100 ? String(prompt.prefix(100)) + "…" : prompt)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer()
+                Button(action: { wsService.continueSession() }) {
+                    Label("Continue", systemImage: "play.circle.fill")
+                        .font(.subheadline.weight(.medium))
+                }
+                .tint(.yellow)
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .background(Color.yellow.opacity(0.12))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.yellow.opacity(0.4), lineWidth: 1))
+            .cornerRadius(10)
+            .padding(.horizontal)
+            .padding(.top, 4)
+        }
+
         // Summary Banner
         if let summary = wsService.latestSummary {
             Text(summary)
@@ -618,6 +652,15 @@ struct ChatView: View {
         guard !allNew.isEmpty else { return }
         for entry in allNew {
             enabledIds.insert(entry.id)
+        }
+    }
+
+    private func pauseReasonLabel(_ reason: String?) -> String {
+        switch reason {
+        case "rate_limit":   return "Rate limit reached"
+        case "overloaded":   return "API temporarily overloaded"
+        case "usage_limit":  return "Usage limit reached"
+        default:             return "Session paused"
         }
     }
 

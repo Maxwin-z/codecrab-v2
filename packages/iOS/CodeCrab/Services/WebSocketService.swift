@@ -144,6 +144,11 @@ class WebSocketService: ObservableObject {
     @Published var sessionUsage: SessionUsage? = nil
     @Published var toastMessage: String? = nil
 
+    // Session paused state
+    @Published var sessionPaused: Bool = false
+    @Published var pauseReason: String? = nil
+    @Published var pausedPrompt: String? = nil
+
     // Thread state (global, not per-project)
     @Published var threads: [String: ThreadInfo] = [:]
     @Published var autoResumeBanners: [AutoResumeBanner] = []
@@ -1176,6 +1181,16 @@ class WebSocketService: ObservableObject {
                 self.threads[threadId]!.updatedAt = timestamp
             }
 
+        case "session_paused":
+            if isCurrentProject {
+                self.sessionPaused = true
+                self.pauseReason = json["pauseReason"] as? String
+                self.pausedPrompt = json["pausedPrompt"] as? String
+                if let pid = projectId {
+                    runningProjectIds.remove(pid)
+                }
+            }
+
         case "agent_auto_resume":
             guard let dataDict = json["data"] as? [String: Any],
                   let agentId = dataDict["agentId"] as? String,
@@ -1742,6 +1757,10 @@ class WebSocketService: ObservableObject {
             projectStates[projectId]!.sessionStates[newSessionId] = SessionChatState()
         }
         runningProjectIds.remove(projectId)
+        // Reset pause state when switching sessions
+        self.sessionPaused = false
+        self.pauseReason = nil
+        self.pausedPrompt = nil
         sendWebSocketMessage([
             "type": "resume_session",
             "sessionId": newSessionId,
@@ -1956,10 +1975,29 @@ class WebSocketService: ObservableObject {
         self.pendingPermission = nil
         self.sessionUsage = nil
         projectStates[pid]!.sessionUsage = nil
+        // Reset pause state
+        self.sessionPaused = false
+        self.pauseReason = nil
+        self.pausedPrompt = nil
         // Tell server to clear session binding (next prompt will create new session via tempSessionId)
         sendWebSocketMessage([
             "type": "new_session",
             "projectId": pid
+        ])
+    }
+
+    func continueSession() {
+        guard let projectId = activeProjectId, !sessionId.isEmpty else { return }
+        sessionPaused = false
+        pauseReason = nil
+        pausedPrompt = nil
+        if let pid = activeProjectId {
+            runningProjectIds.insert(pid)
+        }
+        sendWebSocketMessage([
+            "type": "continue_session",
+            "projectId": projectId,
+            "sessionId": sessionId
         ])
     }
 }
