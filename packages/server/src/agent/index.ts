@@ -488,9 +488,14 @@ export class ClaudeAgent implements AgentInterface {
           })
         }
 
-        // Auto-approve cron and push tools (whitelisted, no user confirmation needed)
-        if (toolName.startsWith('mcp__cron__') || toolName.startsWith('mcp__push__') || toolName.startsWith('mcp__threads__')) {
-          return { behavior: 'allow' as const }
+        // Auto-approve built-in extension tools (whitelisted, no user confirmation needed)
+        if (
+          toolName.startsWith('mcp__cron__') ||
+          toolName.startsWith('mcp__push__') ||
+          toolName.startsWith('mcp__threads__') ||
+          toolName.startsWith('mcp__chrome__')
+        ) {
+          return { behavior: 'allow' as const, updatedInput: input }
         }
 
         // In bypass mode, auto-approve everything else

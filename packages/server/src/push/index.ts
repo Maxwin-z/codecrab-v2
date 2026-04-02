@@ -62,13 +62,11 @@ export function initPushConsumer(core: CoreEngine): void {
     sendPush(title, e.summary, { projectId: e.projectId, sessionId: e.sessionId })
   })
 
-  // Push on background task completion/failure
+  // Push only on background task failure
   core.on('turn:background_task', (e) => {
-    if (e.status === 'completed' || e.status === 'failed') {
+    if (e.status === 'failed') {
       const title = getProjectDisplayName(e.projectId)
-      const body = e.status === 'completed'
-        ? `Background task done: ${e.summary || e.taskId}`
-        : `Background task failed: ${e.summary || e.taskId}`
+      const body = `Background task failed: ${e.summary || e.taskId}`
       sendPush(title, body, { projectId: e.projectId, sessionId: e.sessionId })
     }
   })
