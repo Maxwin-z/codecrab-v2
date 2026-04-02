@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { AgentAvatar, isAvatarImage } from '@/components/AgentAvatar'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useSearchParams, useNavigate } from 'react-router'
@@ -185,10 +186,10 @@ function ChatBubbleRow({
       <div className="shrink-0 w-9">
         {showAvatar ? (
           <div
-            className="w-9 h-9 flex items-center justify-center text-lg rounded-lg"
-            style={{ background: avatarBg }}
+            className="w-9 h-9 flex items-center justify-center text-lg rounded-lg overflow-hidden"
+            style={{ background: isAvatarImage(emoji) ? 'transparent' : avatarBg }}
           >
-            {emoji}
+            <AgentAvatar value={emoji} size="md" />
           </div>
         ) : (
           <div className="w-9 h-9" />
@@ -582,10 +583,10 @@ export function ThreadViewPage({ onUnauthorized }: { onUnauthorized?: () => void
                 {thread.participants.map(p => (
                   <div key={p.agentId} className="flex items-center gap-1.5">
                     <div
-                      className="w-5 h-5 flex items-center justify-center text-xs rounded"
-                      style={{ background: agentAvatarColor(p.agentName) }}
+                      className="w-5 h-5 flex items-center justify-center text-xs rounded overflow-hidden"
+                      style={{ background: isAvatarImage(getEmoji(p.agentName)) ? 'transparent' : agentAvatarColor(p.agentName) }}
                     >
-                      {getEmoji(p.agentName)}
+                      <AgentAvatar value={getEmoji(p.agentName)} size="sm" />
                     </div>
                     <span className="text-xs text-muted-foreground">@{p.agentName}</span>
                   </div>

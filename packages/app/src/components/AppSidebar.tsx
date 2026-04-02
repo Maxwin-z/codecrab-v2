@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { AgentAvatar } from '@/components/AgentAvatar'
 import { useNavigate, useSearchParams, useLocation } from 'react-router'
 import { useWs } from '@/hooks/WebSocketContext'
 import { useStore } from '@/store/store'
@@ -324,7 +325,7 @@ export function AppSidebar({
                         onClick={() => handleSelectAgent(a)}
                       >
                         <div className="flex items-center gap-2 w-full min-w-0">
-                          <span className="text-base shrink-0">{a.emoji || '🤖'}</span>
+                          <AgentAvatar value={a.emoji || '🤖'} size="sm" />
                           <span className="truncate flex-1">{a.name}</span>
                           {status === 'processing' ? (
                             <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { AgentAvatar } from '@/components/AgentAvatar'
 import { Button } from '@/components/ui/button'
 import { Send, Square, ImagePlus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -259,7 +260,7 @@ export function InputBar({
                   }}
                   onMouseEnter={() => setMentionIndex(i)}
                 >
-                  <span className="text-base shrink-0">{agent.emoji || '🤖'}</span>
+                  <AgentAvatar value={agent.emoji || '🤖'} size="sm" />
                   <span className="truncate">@{agent.name}</span>
                 </button>
               ))}

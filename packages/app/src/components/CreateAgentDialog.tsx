@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { authFetch } from '@/lib/auth'
+import { ROLE_AVATARS } from '@/constants/roleAvatars'
 
 const AGENT_EMOJIS = [
   '🤖','✍️','🎬','🔍','📊','🌐','📝','🎨','💻','📱',
@@ -26,6 +27,7 @@ export function CreateAgentDialog({ open, onOpenChange, onCreated, onUnauthorize
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('🤖')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [pickerTab, setPickerTab] = useState<'emoji' | 'avatar'>('emoji')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -36,6 +38,7 @@ export function CreateAgentDialog({ open, onOpenChange, onCreated, onUnauthorize
       setName('')
       setEmoji('🤖')
       setShowEmojiPicker(false)
+      setPickerTab('emoji')
       setCreating(false)
       setError(null)
       // Focus the name input after open animation
@@ -95,33 +98,94 @@ export function CreateAgentDialog({ open, onOpenChange, onCreated, onUnauthorize
           </Dialog.Title>
 
           <div className="flex flex-col items-center gap-4">
-            {/* Emoji selector */}
+            {/* Avatar selector button */}
             <button
               type="button"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="w-24 h-24 flex items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 transition-colors cursor-pointer text-5xl"
+              className="w-24 h-24 flex items-center justify-center rounded-2xl border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 transition-colors cursor-pointer text-5xl overflow-hidden"
             >
-              {emoji}
+              {emoji.startsWith('/avatars/') ? (
+                <img src={emoji} alt="" className="w-full h-full object-cover" />
+              ) : (
+                emoji
+              )}
             </button>
 
-            {/* Emoji picker grid */}
+            {/* Picker panel */}
             {showEmojiPicker && (
-              <div className="w-full p-2 rounded-lg border bg-background max-h-40 overflow-y-auto">
-                <div className="grid grid-cols-10 gap-1">
-                  {AGENT_EMOJIS.map((e, i) => (
-                    <button
-                      key={`${e}-${i}`}
-                      type="button"
-                      onClick={() => { setEmoji(e); setShowEmojiPicker(false) }}
-                      className={cn(
-                        'p-1.5 rounded hover:bg-accent transition-colors text-lg cursor-pointer',
-                        emoji === e && 'bg-primary/10 ring-1 ring-primary/30',
-                      )}
-                    >
-                      {e}
-                    </button>
-                  ))}
+              <div className="w-full rounded-lg border bg-background overflow-hidden">
+                {/* Tabs */}
+                <div className="flex border-b">
+                  <button
+                    type="button"
+                    onClick={() => setPickerTab('emoji')}
+                    className={cn(
+                      'flex-1 py-2 text-sm transition-colors cursor-pointer',
+                      pickerTab === 'emoji'
+                        ? 'font-medium text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Emoji
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPickerTab('avatar')}
+                    className={cn(
+                      'flex-1 py-2 text-sm transition-colors cursor-pointer',
+                      pickerTab === 'avatar'
+                        ? 'font-medium text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    角色头像
+                  </button>
                 </div>
+
+                {/* Emoji grid */}
+                {pickerTab === 'emoji' && (
+                  <div className="p-2 max-h-44 overflow-y-auto">
+                    <div className="grid grid-cols-10 gap-1">
+                      {AGENT_EMOJIS.map((e, i) => (
+                        <button
+                          key={`${e}-${i}`}
+                          type="button"
+                          onClick={() => { setEmoji(e); setShowEmojiPicker(false) }}
+                          className={cn(
+                            'p-1.5 rounded hover:bg-accent transition-colors text-lg cursor-pointer',
+                            emoji === e && 'bg-primary/10 ring-1 ring-primary/30',
+                          )}
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Role avatar grid */}
+                {pickerTab === 'avatar' && (
+                  <div className="p-2 max-h-44 overflow-y-auto">
+                    <div className="grid grid-cols-4 gap-2">
+                      {ROLE_AVATARS.map((avatar) => (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          onClick={() => { setEmoji(avatar.url); setShowEmojiPicker(false) }}
+                          className={cn(
+                            'flex flex-col items-center gap-1 p-1 rounded-md hover:bg-accent transition-colors cursor-pointer',
+                            emoji === avatar.url && 'bg-primary/10 ring-1 ring-primary/30',
+                          )}
+                        >
+                          <img src={avatar.url} alt={avatar.label} className="w-14 h-14 object-cover rounded" />
+                          <span className="text-xs text-muted-foreground truncate w-full text-center leading-tight">
+                            {avatar.label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
