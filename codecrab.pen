@@ -1,0 +1,1151 @@
+{
+  "version": "2.10",
+  "children": [
+    {
+      "type": "frame",
+      "id": "2iHNX",
+      "x": 900,
+      "y": 0,
+      "name": "mainFrame",
+      "fill": "#F8F5EE",
+      "layout": "vertical",
+      "gap": 32,
+      "padding": 48,
+      "children": [
+        {
+          "type": "frame",
+          "id": "Jh4Nm",
+          "name": "titleArea",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 8,
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "NhoMz",
+              "fill": "#2D2926",
+              "content": "公司角色头像集",
+              "fontFamily": "Inter",
+              "fontSize": 36,
+              "fontWeight": "700"
+            },
+            {
+              "type": "text",
+              "id": "u23qw",
+              "fill": "#8C8782",
+              "content": "16 Corporate Role Avatars · Flat Illustration Style",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "nqlgK",
+          "name": "row1",
+          "gap": 20,
+          "children": [
+            {
+              "type": "frame",
+              "id": "i30wp",
+              "name": "card1",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "tNBam",
+                  "name": "img1",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117451877.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "TAKs4",
+                  "fill": "#2D2926",
+                  "content": "CEO",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "pWC39",
+                  "fill": "#8C8782",
+                  "content": "首席执行官",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Z9ATO",
+              "name": "card2",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "2zRQ4",
+                  "name": "img2",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117535223.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "80LAQ",
+                  "fill": "#2D2926",
+                  "content": "CTO",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "MeH5B",
+                  "fill": "#8C8782",
+                  "content": "首席技术官",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w4JsT",
+              "name": "card3",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "NcubH",
+                  "name": "img3",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117533343.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "Cd3uS",
+                  "fill": "#2D2926",
+                  "content": "CFO",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "hUCnK",
+                  "fill": "#8C8782",
+                  "content": "首席财务官",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "1rizl",
+              "name": "card4",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "tgTrI",
+                  "name": "img4",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117593674.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "6gmrb",
+                  "fill": "#2D2926",
+                  "content": "COO",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "ajBlQ",
+                  "fill": "#8C8782",
+                  "content": "首席运营官",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "GdXlG",
+          "name": "row2",
+          "gap": 20,
+          "children": [
+            {
+              "type": "frame",
+              "id": "Po4HH",
+              "name": "card5",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "OccDd",
+                  "name": "img5",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117645526.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "UAhP2",
+                  "fill": "#2D2926",
+                  "content": "产品经理",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "PkrU3",
+                  "fill": "#8C8782",
+                  "content": "Product Manager",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "rqx5O",
+              "name": "card6",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ZJJEt",
+                  "name": "img6",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117663181.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "Cgl4r",
+                  "fill": "#2D2926",
+                  "content": "工程师",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "6tM9I",
+                  "fill": "#8C8782",
+                  "content": "Software Engineer",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "TAkS0",
+              "name": "card7",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "O5BXj",
+                  "name": "img7",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117683948.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "aEKXR",
+                  "fill": "#2D2926",
+                  "content": "设计师",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "g8UoX",
+                  "fill": "#8C8782",
+                  "content": "UI/UX Designer",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "9y7qg",
+              "name": "card8",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "vc7FW",
+                  "name": "img8",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117721421.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "cP1zV",
+                  "fill": "#2D2926",
+                  "content": "数据分析师",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "WuNiI",
+                  "fill": "#8C8782",
+                  "content": "Data Analyst",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "gsMxV",
+          "name": "row3",
+          "gap": 20,
+          "children": [
+            {
+              "type": "frame",
+              "id": "OAq1z",
+              "name": "card9",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "QJvHh",
+                  "name": "img9",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117759350.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "VVgDC",
+                  "fill": "#2D2926",
+                  "content": "销售总监",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "UhKTq",
+                  "fill": "#8C8782",
+                  "content": "Sales Director",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ambLV",
+              "name": "card10",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "1q1Gp",
+                  "name": "img10",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117796321.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "cRxGs",
+                  "fill": "#2D2926",
+                  "content": "销售专员",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "39UAr",
+                  "fill": "#8C8782",
+                  "content": "Sales Rep",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "QQRQ7",
+              "name": "card11",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "qvEiU",
+                  "name": "img11",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117861510.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "028Bi",
+                  "fill": "#2D2926",
+                  "content": "市场经理",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "3N356",
+                  "fill": "#8C8782",
+                  "content": "Marketing Manager",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "iWXSO",
+              "name": "card12",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "jDiAm",
+                  "name": "img12",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117879673.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "V7QuQ",
+                  "fill": "#2D2926",
+                  "content": "市场专员",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "d52SO",
+                  "fill": "#8C8782",
+                  "content": "Marketing Specialist",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "A4cOS",
+          "name": "row4",
+          "gap": 20,
+          "children": [
+            {
+              "type": "frame",
+              "id": "RPXpz",
+              "name": "card13",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "4W8zu",
+                  "name": "img13",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775118036621.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "GTbfZ",
+                  "fill": "#2D2926",
+                  "content": "客服经理",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "W98Vf",
+                  "fill": "#8C8782",
+                  "content": "CS Manager",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "2Z5RP",
+              "name": "card14",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "V1cPO",
+                  "name": "img14",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117963315.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "MIAch",
+                  "fill": "#2D2926",
+                  "content": "客服专员",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "Fxl7w",
+                  "fill": "#8C8782",
+                  "content": "Customer Service",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "sDsws",
+              "name": "card15",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "4X0jK",
+                  "name": "img15",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775117985205.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "R2fGP",
+                  "fill": "#2D2926",
+                  "content": "HR经理",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "TAjQz",
+                  "fill": "#8C8782",
+                  "content": "HR Manager",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "VJl0N",
+              "name": "card16",
+              "width": 170,
+              "layout": "vertical",
+              "gap": 10,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Uo690",
+                  "name": "img16",
+                  "width": 160,
+                  "height": 160,
+                  "fill": {
+                    "type": "image",
+                    "enabled": true,
+                    "url": "./images/generated-1775118007149.png",
+                    "mode": "fill"
+                  }
+                },
+                {
+                  "type": "text",
+                  "id": "d5LlX",
+                  "fill": "#2D2926",
+                  "content": "财务分析师",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "WY2bu",
+                  "fill": "#8C8782",
+                  "content": "Finance Analyst",
+                  "fontFamily": "Inter",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "KO7X2",
+      "x": -224,
+      "y": 0,
+      "name": "AppIcon_1024",
+      "clip": true,
+      "width": 1024,
+      "height": 1024,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "./images/generated-1775129816114.png",
+        "mode": "fill"
+      },
+      "layout": "none",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "TKnwQ",
+          "x": 0,
+          "y": 0,
+          "name": "vignette",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "radial",
+            "enabled": true,
+            "rotation": 0,
+            "size": {
+              "width": 1,
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#00000000",
+                "position": 0.35
+              },
+              {
+                "color": "#1A0804CC",
+                "position": 1
+              }
+            ]
+          },
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "type": "ellipse",
+          "id": "7vCOD",
+          "x": 118,
+          "y": 265,
+          "name": "n1",
+          "fill": "#FF8C00",
+          "width": 20,
+          "height": 20,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF8C00",
+            "blur": 22
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "JgjIU",
+          "x": 196,
+          "y": 162,
+          "name": "n2",
+          "fill": "#FFB830",
+          "width": 14,
+          "height": 14,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FFB830",
+            "blur": 14
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "KHpxa",
+          "x": 880,
+          "y": 265,
+          "name": "n3",
+          "fill": "#FF8C00",
+          "width": 20,
+          "height": 20,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF8C00",
+            "blur": 22
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "6T96L",
+          "x": 810,
+          "y": 162,
+          "name": "n4",
+          "fill": "#FFB830",
+          "width": 14,
+          "height": 14,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FFB830",
+            "blur": 14
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "QTrbo",
+          "x": 502,
+          "y": 88,
+          "name": "n5",
+          "fill": "#FF8C0099",
+          "width": 10,
+          "height": 10,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF8C00",
+            "blur": 10
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "ckL4A",
+          "x": 168,
+          "y": 820,
+          "name": "n6",
+          "fill": "#FF8C0088",
+          "width": 16,
+          "height": 16,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF8C00",
+            "blur": 16
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "8KBxG",
+          "x": 836,
+          "y": 820,
+          "name": "n7",
+          "fill": "#FF8C0088",
+          "width": 16,
+          "height": 16,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF8C00",
+            "blur": 16
+          }
+        },
+        {
+          "type": "rectangle",
+          "id": "z0Rna",
+          "x": 32,
+          "y": 32,
+          "name": "br1",
+          "fill": "#FFB830",
+          "width": 50,
+          "height": 3
+        },
+        {
+          "type": "rectangle",
+          "id": "Kpqc0",
+          "x": 32,
+          "y": 32,
+          "name": "br2",
+          "fill": "#FFB830",
+          "width": 3,
+          "height": 50
+        },
+        {
+          "type": "rectangle",
+          "id": "zG7pr",
+          "x": 942,
+          "y": 32,
+          "name": "br3",
+          "fill": "#FFB830",
+          "width": 50,
+          "height": 3
+        },
+        {
+          "type": "rectangle",
+          "id": "QNKM2",
+          "x": 989,
+          "y": 32,
+          "name": "br4",
+          "fill": "#FFB830",
+          "width": 3,
+          "height": 50
+        },
+        {
+          "type": "rectangle",
+          "id": "KkPey",
+          "x": 32,
+          "y": 989,
+          "name": "br5",
+          "fill": "#FFB830",
+          "width": 50,
+          "height": 3
+        },
+        {
+          "type": "rectangle",
+          "id": "NcVg7",
+          "x": 32,
+          "y": 942,
+          "name": "br6",
+          "fill": "#FFB830",
+          "width": 3,
+          "height": 50
+        },
+        {
+          "type": "rectangle",
+          "id": "AZcsv",
+          "x": 942,
+          "y": 989,
+          "name": "br7",
+          "fill": "#FFB830",
+          "width": 50,
+          "height": 3
+        },
+        {
+          "type": "rectangle",
+          "id": "fR1Jv",
+          "x": 989,
+          "y": 942,
+          "name": "br8",
+          "fill": "#FFB830",
+          "width": 3,
+          "height": 50
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "CPEqU",
+      "x": -224,
+      "y": 1124,
+      "name": "AppIcon_Cute",
+      "clip": true,
+      "width": 1024,
+      "height": 1024,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "./images/generated-1775130123112.png",
+        "mode": "fill"
+      },
+      "layout": "none",
+      "children": [
+        {
+          "type": "rectangle",
+          "id": "nU0to",
+          "x": 0,
+          "y": 0,
+          "name": "vignette2",
+          "fill": {
+            "type": "gradient",
+            "gradientType": "radial",
+            "enabled": true,
+            "rotation": 0,
+            "size": {
+              "width": 1,
+              "height": 1
+            },
+            "colors": [
+              {
+                "color": "#00000000",
+                "position": 0.5
+              },
+              {
+                "color": "#2A100866",
+                "position": 1
+              }
+            ]
+          },
+          "width": 1024,
+          "height": 1024
+        },
+        {
+          "type": "ellipse",
+          "id": "YioOc",
+          "x": 128,
+          "y": 270,
+          "name": "cn1",
+          "fill": "#FFD080",
+          "width": 18,
+          "height": 18,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FFD080",
+            "blur": 18
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "Oce80",
+          "x": 210,
+          "y": 170,
+          "name": "cn2",
+          "fill": "#FF9966",
+          "width": 12,
+          "height": 12,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF9966",
+            "blur": 12
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "zVlXK",
+          "x": 874,
+          "y": 270,
+          "name": "cn3",
+          "fill": "#FFD080",
+          "width": 18,
+          "height": 18,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FFD080",
+            "blur": 18
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "PGwpj",
+          "x": 798,
+          "y": 170,
+          "name": "cn4",
+          "fill": "#FF9966",
+          "width": 12,
+          "height": 12,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF9966",
+            "blur": 12
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "uxCJA",
+          "x": 504,
+          "y": 92,
+          "name": "cn5",
+          "fill": "#FFD08099",
+          "width": 8,
+          "height": 8,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FFD080",
+            "blur": 8
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "6VbW2",
+          "x": 172,
+          "y": 824,
+          "name": "cn6",
+          "fill": "#FF996688",
+          "width": 14,
+          "height": 14,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF9966",
+            "blur": 14
+          }
+        },
+        {
+          "type": "ellipse",
+          "id": "JHraQ",
+          "x": 834,
+          "y": 824,
+          "name": "cn7",
+          "fill": "#FF996688",
+          "width": 14,
+          "height": 14,
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#FF9966",
+            "blur": 14
+          }
+        }
+      ]
+    }
+  ]
+}

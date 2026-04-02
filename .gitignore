@@ -11,6 +11,9 @@ dist/
 .logs/
 .DS_Store
 
+# Generated images
+images/
+
 # Xcode / iOS
 xcuserdata/
 *.xcuserstate

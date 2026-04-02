@@ -241,12 +241,15 @@ export function AppSidebar({
     <aside className="w-56 border-r border-sidebar-border bg-sidebar flex flex-col h-full shrink-0" style={style}>
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-sidebar-border flex items-center justify-between">
-        <h2
-          className="font-semibold text-sm text-sidebar-foreground cursor-pointer"
+        <div
+          className="flex items-center gap-2 cursor-pointer"
           onClick={() => navigate('/')}
         >
-          CodeCrab v2
-        </h2>
+          <img src="/codecrab.png" alt="CodeCrab" className="w-6 h-6 rounded-md" />
+          <h2 className="font-semibold text-sm text-sidebar-foreground">
+            CodeCrab
+          </h2>
+        </div>
         <div
           ref={addMenuRef}
           className="relative"
