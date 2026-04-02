@@ -672,10 +672,13 @@ export class ClaudeAgent implements AgentInterface {
             }
             // input_json_delta is ignored — tool input is accumulated in assistant messages
           } else if (event.type === 'message_start') {
-            // Capture usage/context window info
+            // Capture usage/context window info — total context = input + cache reads + cache creates
             const usage = event.message?.usage
             if (usage) {
-              contextWindowUsed = usage.input_tokens || 0
+              const total = (usage.input_tokens || 0)
+                + (usage.cache_read_input_tokens || 0)
+                + (usage.cache_creation_input_tokens || 0)
+              if (total > 0) contextWindowUsed = total
             }
           }
         }
@@ -751,8 +754,21 @@ export class ClaudeAgent implements AgentInterface {
 
           // Extract contextWindow from modelUsage (keyed by model name)
           const modelUsageValues = Object.values(m.modelUsage || {}) as Array<{ contextWindow?: number }>
-          if (modelUsageValues.length > 0 && modelUsageValues[0].contextWindow) {
-            contextWindowMax = modelUsageValues[0].contextWindow
+          const maxFromModel = modelUsageValues.find(v => (v.contextWindow ?? 0) > 0)?.contextWindow
+          if (maxFromModel) {
+            contextWindowMax = maxFromModel
+          }
+          // Fallback: SDK didn't report context window — use Claude's standard 200k default
+          if (!contextWindowMax) {
+            contextWindowMax = 200000
+          }
+          // Fallback: message_start event may not have fired — use result-level usage total
+          if (!contextWindowUsed && m.usage) {
+            const u = m.usage
+            const total = (u.input_tokens || 0)
+              + (u.cache_read_input_tokens || 0)
+              + (u.cache_creation_input_tokens || 0)
+            if (total > 0) contextWindowUsed = total
           }
 
           const usage: UsageInfo = {

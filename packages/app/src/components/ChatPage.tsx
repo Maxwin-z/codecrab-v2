@@ -5,7 +5,7 @@ import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { useStore } from '@/store/store'
 import { selectConnected, selectViewingSession, selectViewingSessionId, selectProjectState, selectPromptPending, selectIsAborting, selectQueryQueue } from '@/store/selectors'
 import { authFetch } from '@/lib/auth'
-import { cn, formatDuration, formatCost } from '@/lib/utils'
+import { cn, formatDuration } from '@/lib/utils'
 import { MessageList, groupAssistantMessages } from './MessageList'
 import { InputBar, type MentionableAgent } from './InputBar'
 import { SessionSidebar } from './SessionSidebar'
@@ -25,7 +25,6 @@ import {
   PanelLeftClose,
   PanelLeft,
   Clock,
-  DollarSign,
   Cpu,
   Zap,
   Shield,
@@ -428,22 +427,16 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
           {/* Session usage */}
           {usage && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {usage.totalCostUsd > 0 && (
-                <span className="flex items-center gap-1" title="Total cost">
-                  <DollarSign className="h-3 w-3" />
-                  {formatCost(usage.totalCostUsd)}
-                </span>
-              )}
               {usage.totalDurationMs > 0 && (
                 <span className="flex items-center gap-1" title="Total duration">
                   <Clock className="h-3 w-3" />
                   {formatDuration(usage.totalDurationMs)}
                 </span>
               )}
-              {usage.contextWindowMax > 0 && (
+              {usage.contextWindowMax > 0 && usage.contextWindowUsed > 0 && (
                 <span className="flex items-center gap-1" title="Context window usage">
                   <Cpu className="h-3 w-3" />
-                  {Math.round(usage.contextWindowUsed / usage.contextWindowMax * 100)}%
+                  {(usage.contextWindowUsed / usage.contextWindowMax * 100).toFixed(1)}%
                 </span>
               )}
             </div>
