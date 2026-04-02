@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { authFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,8 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  Copy,
+  ExternalLink,
 } from 'lucide-react'
 
 interface FileEntry {
@@ -102,6 +104,7 @@ export function FileBrowserPanel({
   const [historyDepth, setHistoryDepth] = useState(0)
   const [sortBy, setSortBy] = useState<'name' | 'modified'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [breadcrumbMenu, setBreadcrumbMenu] = useState<{ x: number; y: number; name: string } | null>(null)
 
   const toggleSort = (field: 'name' | 'modified') => {
     if (sortBy === field) {
@@ -143,6 +146,7 @@ export function FileBrowserPanel({
   useEffect(() => {
     loadDir(currentPath)
   }, [showHidden])
+
 
   const navigateTo = (path: string) => {
     if (onNavigate) {
@@ -196,6 +200,12 @@ export function FileBrowserPanel({
                   idx === breadcrumbs.length - 1 ? 'font-semibold text-foreground' : 'text-muted-foreground',
                 )}
                 onClick={() => { if (seg.path !== currentPath) navigateTo(seg.path) }}
+                onContextMenu={(e) => {
+                  if (seg.name === '/' || seg.name === '...') return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setBreadcrumbMenu({ x: e.clientX, y: e.clientY, name: seg.name })
+                }}
                 title={seg.path}
               >
                 {seg.name}
@@ -284,24 +294,36 @@ export function FileBrowserPanel({
           </div>
         )}
       </div>
+      {breadcrumbMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={() => setBreadcrumbMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setBreadcrumbMenu(null) }}
+          />
+          <div
+            className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover shadow-md py-1"
+            style={{ left: breadcrumbMenu.x, top: breadcrumbMenu.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors flex items-center gap-2"
+              onClick={() => {
+                navigator.clipboard.writeText(breadcrumbMenu.name)
+                setBreadcrumbMenu(null)
+              }}
+            >
+              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+              Copy name
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
 function FileRow({ item, onClick }: { item: FileEntry; onClick: () => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!menu) return
-    const close = () => setMenu(null)
-    document.addEventListener('click', close)
-    document.addEventListener('contextmenu', close)
-    return () => {
-      document.removeEventListener('click', close)
-      document.removeEventListener('contextmenu', close)
-    }
-  }, [menu])
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -342,25 +364,32 @@ function FileRow({ item, onClick }: { item: FileEntry; onClick: () => void }) {
         </div>
       </button>
       {menu && (
-        <div
-          ref={menuRef}
-          className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover shadow-md py-1"
-          style={{ left: menu.x, top: menu.y }}
-          onClick={e => e.stopPropagation()}
-        >
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
-            onClick={openOnComputer}
+        <>
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}
+          />
+          <div
+            className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover shadow-md py-1"
+            style={{ left: menu.x, top: menu.y }}
           >
-            Open on computer
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
-            onClick={copyPath}
-          >
-            Copy path
-          </button>
-        </div>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors flex items-center gap-2"
+              onClick={openOnComputer}
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              Open on computer
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors flex items-center gap-2"
+              onClick={copyPath}
+            >
+              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+              Copy path
+            </button>
+          </div>
+        </>
       )}
     </>
   )
