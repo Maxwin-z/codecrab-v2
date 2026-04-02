@@ -8,10 +8,11 @@ import { authFetch } from '@/lib/auth'
 import { fetchThreads } from '@/lib/threads'
 import { cn } from '@/lib/utils'
 import type { ThreadInfo } from '@/store/types'
-import { Search, Settings, FolderOpen, Plus, ChevronRight, Pencil, MessageCircle, Sun, Moon } from 'lucide-react'
+import { Search, Settings, FolderOpen, Plus, ChevronRight, Pencil, MessageCircle, Sun, Moon, Clock } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { Input } from '@/components/ui/input'
 import { CreateAgentDialog } from '@/components/CreateAgentDialog'
+import { useCronSummary } from '@/hooks/useCron'
 
 interface Project {
   id: string
@@ -98,6 +99,7 @@ export function AppSidebar({
   const [showAddMenu, setShowAddMenu] = useState(false)
   const addMenuRef = useRef<HTMLDivElement>(null)
   const { theme, toggleTheme } = useTheme()
+  const { summary: cronSummary } = useCronSummary(onUnauthorized)
   const currentProjectId = searchParams.get('project')
   const currentThreadId = searchParams.get('id')
 
@@ -465,6 +467,23 @@ export function AppSidebar({
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border flex items-center">
+        <button
+          className={cn(
+            'flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors cursor-pointer',
+            location.pathname === '/cron'
+              ? 'text-sidebar-foreground bg-sidebar-accent/60'
+              : 'text-muted-foreground hover:bg-sidebar-accent/50',
+          )}
+          onClick={() => navigate('/cron')}
+          title="Scheduled Tasks"
+        >
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          {cronSummary && cronSummary.totalActive > 0 && (
+            <span className="text-[10px] font-medium tabular-nums bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded px-1">
+              {cronSummary.totalActive}
+            </span>
+          )}
+        </button>
         <button
           className="flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-sidebar-accent/50 transition-colors cursor-pointer"
           onClick={() => navigate('/settings')}

@@ -10,6 +10,7 @@ import { SettingsPage } from '@/components/SettingsPage'
 import { CreateProjectPage } from '@/components/CreateProjectPage'
 import { FilePreviewPage } from '@/components/FilePreviewPage'
 import { FileBrowserPage } from '@/components/FileBrowserPage'
+import { CronPage } from '@/components/CronPage'
 import { AppSidebar } from '@/components/AppSidebar'
 import { WebSocketProvider } from '@/hooks/WebSocketContext'
 import { useIsDesktop } from '@/hooks/useMediaQuery'
@@ -168,6 +169,7 @@ function AppRoutes() {
             <Route path="/thread" element={<ThreadViewPage onUnauthorized={handleUnauthorized} />} />
             <Route path="/settings" element={<SettingsPage onUnauthorized={handleUnauthorized} />} />
             <Route path="/projects/new" element={<CreateProjectPage onUnauthorized={handleUnauthorized} />} />
+            <Route path="/cron" element={<CronPage onUnauthorized={handleUnauthorized} />} />
             <Route path="/" element={<HomePage onUnauthorized={handleUnauthorized} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
