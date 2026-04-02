@@ -9,10 +9,11 @@ import { authFetch } from '@/lib/auth'
 import { fetchThreads } from '@/lib/threads'
 import { cn } from '@/lib/utils'
 import type { ThreadInfo } from '@/store/types'
-import { Search, Settings, FolderOpen, Plus, ChevronRight, Pencil, MessageCircle, Sun, Moon, Clock } from 'lucide-react'
+import { Search, Settings, FolderOpen, Plus, ChevronRight, Pencil, MessageCircle, Sun, Moon, Clock, UserPen } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { Input } from '@/components/ui/input'
 import { CreateAgentDialog } from '@/components/CreateAgentDialog'
+import { EditAgentDialog } from '@/components/EditAgentDialog'
 import { useCronSummary } from '@/hooks/useCron'
 
 interface Project {
@@ -98,6 +99,7 @@ export function AppSidebar({
   const [threadsCollapsed, setThreadsCollapsed] = useState(false)
   const [showCreateAgent, setShowCreateAgent] = useState(false)
   const [showAddMenu, setShowAddMenu] = useState(false)
+  const [editingAgentInfo, setEditingAgentInfo] = useState<Agent | null>(null)
   const addMenuRef = useRef<HTMLDivElement>(null)
   const { theme, toggleTheme } = useTheme()
   const { summary: cronSummary } = useCronSummary(onUnauthorized)
@@ -341,13 +343,22 @@ export function AppSidebar({
                           </div>
                         ) : null}
                       </button>
-                      <button
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                        onClick={e => handleEditAgent(e, a)}
-                        title="Edit agent definition"
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
+                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80 cursor-pointer"
+                          onClick={e => { e.stopPropagation(); setEditingAgentInfo(a) }}
+                          title="Edit name and avatar"
+                        >
+                          <UserPen className="h-3 w-3" />
+                        </button>
+                        <button
+                          className="h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/80 cursor-pointer"
+                          onClick={e => handleEditAgent(e, a)}
+                          title="Edit role definition"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                   )
                 })}
@@ -505,6 +516,14 @@ export function AppSidebar({
         open={showCreateAgent}
         onOpenChange={setShowCreateAgent}
         onCreated={() => loadData()}
+        onUnauthorized={onUnauthorized}
+      />
+
+      <EditAgentDialog
+        open={editingAgentInfo !== null}
+        onOpenChange={open => { if (!open) setEditingAgentInfo(null) }}
+        agent={editingAgentInfo}
+        onSaved={() => { setEditingAgentInfo(null); loadData() }}
         onUnauthorized={onUnauthorized}
       />
     </aside>
