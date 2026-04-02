@@ -45,7 +45,13 @@ When the user is satisfied or when asked to finalize, output the complete CLAUDE
 ... complete CLAUDE.md content here ...
 </agent-claude-md>
 
-Always include these markers so the system can extract the content automatically.
+Also output a one-sentence character description (10–20 words) that captures the agent's role and personality, wrapped in:
+
+<agent-description>
+... one-sentence description here ...
+</agent-description>
+
+Always include both sets of markers so the system can extract the content automatically.
 `
 
 async function ensureDir(dir: string) {
@@ -222,8 +228,8 @@ export class AgentManager {
     return agent
   }
 
-  /** Update an existing agent's name and/or emoji */
-  async update(agentId: string, params: { name?: string; emoji?: string }): Promise<Agent> {
+  /** Update an existing agent's name and/or emoji and/or description */
+  async update(agentId: string, params: { name?: string; emoji?: string; description?: string }): Promise<Agent> {
     const agent = this.agents.get(agentId)
     if (!agent) throw new AgentNotFoundError('Agent not found')
     if (agentId === SYSTEM_AGENT_ID) throw new AgentValidationError('Cannot modify system agent')
@@ -268,6 +274,10 @@ export class AgentManager {
       if (editorProject) {
         await this.projects.update(editorProjectId, { icon: params.emoji })
       }
+    }
+
+    if (params.description !== undefined) {
+      agent.description = params.description
     }
 
     agent.updatedAt = Date.now()

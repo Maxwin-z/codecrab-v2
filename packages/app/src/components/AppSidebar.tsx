@@ -27,6 +27,7 @@ interface Agent {
   id: string
   name: string
   emoji: string
+  description?: string
 }
 
 const RECENTLY_ACTIVE_MS = 10 * 60 * 1000
@@ -328,7 +329,12 @@ export function AppSidebar({
                       >
                         <div className="flex items-center gap-2 w-full min-w-0">
                           <AgentAvatar value={a.emoji || '🤖'} size="sm" />
-                          <span className="truncate flex-1">{a.name}</span>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="truncate">{a.name}</span>
+                            {a.description && (
+                              <span className="truncate text-xs text-muted-foreground/60 leading-tight">{a.description}</span>
+                            )}
+                          </div>
                           {status === 'processing' ? (
                             <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse shrink-0" />
                           ) : isRecentlyActive(agentProjectId) ? (

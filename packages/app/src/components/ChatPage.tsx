@@ -72,6 +72,16 @@ function extractAgentClaudeMd(messages: Array<{ role: string; content: string }>
   return null
 }
 
+/** Extract <agent-description>...</agent-description> content from messages */
+function extractAgentDescription(messages: Array<{ role: string; content: string }>): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'assistant') continue
+    const match = messages[i].content.match(/<agent-description>([\s\S]*?)<\/agent-description>/)
+    if (match) return match[1].trim()
+  }
+  return null
+}
+
 export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const isDesktop = useIsDesktop()
@@ -251,9 +261,10 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
       .catch(() => {})
   }, [projectId, viewingSessionId, onUnauthorized])
 
-  // Detect <agent-claude-md> in messages (must be before early return to preserve hook order)
+  // Detect <agent-claude-md> and <agent-description> in messages (must be before early return to preserve hook order)
   const sessionMessages = session?.messages ?? []
   const extractedClaudeMd = useMemo(() => extractAgentClaudeMd(sessionMessages), [sessionMessages])
+  const extractedDescription = useMemo(() => extractAgentDescription(sessionMessages), [sessionMessages])
 
   if (!projectId || !project) {
     return (
@@ -266,10 +277,12 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
   const handleSaveClaudeMd = async () => {
     if (!extractedClaudeMd || !editingAgentId) return
     try {
+      const body: { content: string; description?: string } = { content: extractedClaudeMd }
+      if (extractedDescription) body.description = extractedDescription
       const res = await authFetch(`/api/agents/${editingAgentId}/edit/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: extractedClaudeMd }),
+        body: JSON.stringify(body),
       }, onUnauthorized)
       if (res.ok) {
         setEditSaved(true)

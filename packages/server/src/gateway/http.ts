@@ -410,15 +410,19 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
     }
   })
 
-  /** Complete editing — save updated CLAUDE.md */
+  /** Complete editing — save updated CLAUDE.md and optional description */
   router.post('/api/agents/:id/edit/complete', async (req: Request, res: Response) => {
-    const { content } = req.body as { content?: string }
+    const { content, description } = req.body as { content?: string; description?: string }
     if (content === undefined) {
       res.status(400).json({ error: 'Missing content' })
       return
     }
     try {
-      await core.agents.saveClaudeMd(req.params.id as string, content)
+      const agentId = req.params.id as string
+      await core.agents.saveClaudeMd(agentId, content)
+      if (description !== undefined) {
+        await core.agents.update(agentId, { description })
+      }
       res.json({ content })
     } catch (err) {
       if (err instanceof AgentNotFoundError) {
