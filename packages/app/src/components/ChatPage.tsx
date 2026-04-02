@@ -7,6 +7,7 @@ import { selectConnected, selectViewingSession, selectViewingSessionId, selectPr
 import { authFetch } from '@/lib/auth'
 import { cn, formatDuration } from '@/lib/utils'
 import { MessageList, groupAssistantMessages } from './MessageList'
+import { AgentAvatar } from './AgentAvatar'
 import { InputBar, type MentionableAgent } from './InputBar'
 import { SessionSidebar } from './SessionSidebar'
 import { AgentActivityBanner } from './AgentActivityBanner'
@@ -369,15 +370,15 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
             <FolderOpen className="h-4 w-4" />
           </Button>
 
-<span className="text-base mr-1">{project.icon || '📁'}</span>
+<AgentAvatar value={project.icon || '📁'} size="sm" className="mr-1" />
           <span className="font-medium text-sm truncate">{project.name}</span>
 
           {/* Editing indicator */}
           {editingAgent && (
             <div className="flex items-center gap-1.5 ml-1">
               <Pencil className="h-3 w-3 text-blue-500" />
-              <span className="text-xs text-blue-500 font-medium">
-                Editing {editingAgent.agentEmoji} {editingAgent.agentName}
+              <span className="text-xs text-blue-500 font-medium flex items-center gap-1">
+                Editing <AgentAvatar value={editingAgent.agentEmoji} size="sm" /> {editingAgent.agentName}
               </span>
             </div>
           )}
