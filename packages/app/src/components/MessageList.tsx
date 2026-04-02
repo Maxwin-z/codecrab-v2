@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -16,39 +16,66 @@ import type { ChatMsg, ContentBlock } from '@/store/types'
 import { FilePathLink } from './FilePathLink'
 
 // Matches absolute paths with at least 2 segments, not preceded by : or word char (avoids URLs)
-const FILE_PATH_RE = /(?<![:\w/])(\/[^\s"'`<>()[\]{},\\]+(?:\/[^\s"'`<>()[\]{},\\]*)+)/g
+const ABS_PATH_RE = /(?<![:\w/])(\/[^\s"'`<>()[\]{},\\]+(?:\/[^\s"'`<>()[\]{},\\]*)+)/g
+// Matches relative paths: ./foo, ../bar, word/word/..., or word/ (3+ char single-segment directory)
+const REL_PATH_RE = /(?<![:\w/.])(\.\.?\/[\w.\-/]+|[\w\-]+(?:\/[\w.\-]+)+\/?|[\w\-]{3,}\/)/g
+
+// Context to pass project path down to FilePathLink without prop drilling
+const ProjectPathContext = createContext<string | undefined>(undefined)
 
 /**
- * Rehype plugin that wraps absolute file paths in text nodes with a marker span,
+ * Rehype plugin that wraps file paths (absolute and relative) in text nodes with a marker span,
  * skipping <a>, <code>, and <pre> elements.
  */
 function rehypeFilePaths() {
+  function processTextNode(text: string): any[] {
+    const matches: { index: number; end: number; raw: string; isRel: boolean }[] = []
+
+    ABS_PATH_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = ABS_PATH_RE.exec(text)) !== null) {
+      const raw = m[1].replace(/[.,;:!?]+$/, '')
+      if (raw) matches.push({ index: m.index, end: m.index + raw.length, raw, isRel: false })
+    }
+
+    REL_PATH_RE.lastIndex = 0
+    while ((m = REL_PATH_RE.exec(text)) !== null) {
+      const raw = m[1].replace(/[.,;:!?]+$/, '')
+      if (!raw) continue
+      // Skip if overlapping with an already-detected absolute path
+      const overlaps = matches.some(e => m!.index < e.end && m!.index + raw.length > e.index)
+      if (!overlaps) matches.push({ index: m.index, end: m.index + raw.length, raw, isRel: true })
+    }
+
+    if (matches.length === 0) return [{ type: 'text', value: text }]
+
+    matches.sort((a, b) => a.index - b.index)
+
+    const parts: any[] = []
+    let last = 0
+    for (const { index, raw, isRel } of matches) {
+      if (index > last) parts.push({ type: 'text', value: text.slice(last, index) })
+      parts.push({
+        type: 'element',
+        tagName: 'span',
+        properties: { className: [isRel ? 'file-path-link-rel' : 'file-path-link'] },
+        children: [{ type: 'text', value: raw }],
+      })
+      last = index + raw.length
+    }
+    if (last < text.length) parts.push({ type: 'text', value: text.slice(last) })
+    return parts
+  }
+
   function processNode(node: any, skip: boolean): any[] {
     if (node.type === 'text') {
       if (skip) return [node]
-      const text: string = node.value
-      const parts: any[] = []
-      let last = 0
-      FILE_PATH_RE.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = FILE_PATH_RE.exec(text)) !== null) {
-        const raw = m[1].replace(/[.,;:!?]+$/, '') // strip trailing punctuation
-        if (!raw) continue
-        if (m.index > last) parts.push({ type: 'text', value: text.slice(last, m.index) })
-        parts.push({
-          type: 'element',
-          tagName: 'span',
-          properties: { className: ['file-path-link'] },
-          children: [{ type: 'text', value: raw }],
-        })
-        last = m.index + m[0].length
-      }
-      if (parts.length === 0) return [node]
-      if (last < text.length) parts.push({ type: 'text', value: text.slice(last) })
-      return parts
+      return processTextNode(node.value)
     }
     if (node.type === 'element') {
-      const childSkip = skip || ['a', 'code', 'pre'].includes(node.tagName)
+      const cls: string[] = node.properties?.className ?? []
+      const isPathSpan = cls.includes('file-path-link') || cls.includes('file-path-link-rel')
+      const childSkip = skip || isPathSpan || ['a', 'code', 'pre'].includes(node.tagName)
       const newChildren = node.children?.flatMap((c: any) => processNode(c, childSkip)) ?? []
       return [{ ...node, children: newChildren }]
     }
@@ -60,21 +87,41 @@ function rehypeFilePaths() {
   }
 }
 
+// Test if a string is entirely an absolute or relative path (for inline-code detection)
+const ABS_PATH_FULL_RE = /^\/[^\s"'`<>()[\]{},\\]+(?:\/[^\s"'`<>()[\]{},\\]*)+$/
+const REL_PATH_FULL_RE = /^(?:\.\.?\/[\w.\-/]+|[\w\-]+(?:\/[\w.\-]+)+\/?|[\w\-]{3,}\/)$/
+
 /** Custom ReactMarkdown components that render file-path marker spans as FilePathLink. */
 const mdComponents = {
   span: (props: any) => {
+    const projectPath = useContext(ProjectPathContext)
     const cls: string = Array.isArray(props.className)
       ? props.className.join(' ')
       : (props.className ?? '')
-    if (cls.includes('file-path-link')) {
-      // children is the path string
+    if (cls.includes('file-path-link') || cls.includes('file-path-link-rel')) {
       const path = typeof props.children === 'string'
         ? props.children
         : String(props.children ?? '')
-      return <FilePathLink path={path} />
+      const isRel = cls.includes('file-path-link-rel')
+      return <FilePathLink path={path} projectPath={isRel ? projectPath : undefined} isRelative={isRel} />
     }
     const { className, children, ...rest } = props
     return <span className={className} {...rest}>{children}</span>
+  },
+  code: (props: any) => {
+    const projectPath = useContext(ProjectPathContext)
+    // Only process inline code (not fenced code blocks which have a className like "language-*")
+    if (!props.className) {
+      const text = typeof props.children === 'string' ? props.children : String(props.children ?? '')
+      if (ABS_PATH_FULL_RE.test(text)) {
+        return <FilePathLink path={text} />
+      }
+      if (REL_PATH_FULL_RE.test(text)) {
+        return <FilePathLink path={text} projectPath={projectPath} isRelative />
+      }
+    }
+    const { className, children, ...rest } = props
+    return <code className={className} {...rest}>{children}</code>
   },
 }
 
@@ -477,12 +524,14 @@ export function MessageList({
   streamingText,
   streamingThinking,
   promptPending,
+  projectPath,
 }: {
   messages: ChatMsg[]
   isStreaming: boolean
   streamingText: string
   streamingThinking: string
   promptPending?: boolean
+  projectPath?: string
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -503,29 +552,31 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-2">
-      {messages.map(msg => (
-        <MessageBubble key={msg.id} msg={msg} />
-      ))}
+    <ProjectPathContext.Provider value={projectPath}>
+      <div className="flex-1 overflow-y-auto px-4 py-2">
+        {messages.map(msg => (
+          <MessageBubble key={msg.id} msg={msg} />
+        ))}
 
-      {promptPending && !isStreaming && (
-        <div className="flex justify-center my-3">
-          <div className="streaming-dots flex gap-1 py-1">
-            <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-            <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-            <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+        {promptPending && !isStreaming && (
+          <div className="flex justify-center my-3">
+            <div className="streaming-dots flex gap-1 py-1">
+              <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+              <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+              <span className="dot h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {isStreaming && (
-        <StreamingIndicator
-          streamingText={streamingText}
-          streamingThinking={streamingThinking}
-        />
-      )}
+        {isStreaming && (
+          <StreamingIndicator
+            streamingText={streamingText}
+            streamingThinking={streamingThinking}
+          />
+        )}
 
-      <div ref={bottomRef} />
-    </div>
+        <div ref={bottomRef} />
+      </div>
+    </ProjectPathContext.Provider>
   )
 }

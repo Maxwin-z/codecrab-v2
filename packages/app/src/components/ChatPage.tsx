@@ -482,6 +482,7 @@ export function ChatPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
           streamingText={streamingText}
           streamingThinking={streamingThinking}
           promptPending={promptPending}
+          projectPath={project?.path}
         />
 
         {/* Suggestions */}

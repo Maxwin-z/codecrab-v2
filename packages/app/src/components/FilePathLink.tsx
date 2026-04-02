@@ -13,45 +13,71 @@ function getDirPath(filePath: string): string {
   return lastSlash > 0 ? filePath.slice(0, lastSlash) : '/'
 }
 
+function resolveRelative(projectPath: string, relPath: string): string {
+  const base = projectPath.replace(/\/$/, '')
+  let rel = relPath.startsWith('./') ? relPath.slice(2) : relPath
+  if (rel.startsWith('../')) {
+    const parts = base.split('/')
+    while (rel.startsWith('../')) {
+      parts.pop()
+      rel = rel.slice(3)
+    }
+    return parts.join('/') + (rel ? '/' + rel : '')
+  }
+  return base + '/' + rel
+}
+
 export function FilePathLink({
   path,
+  projectPath,
+  isRelative,
   className: extraClass,
 }: {
   path: string
+  projectPath?: string
+  isRelative?: boolean
   className?: string
 }) {
+  // For relative paths, resolve to absolute for probing/navigation
+  const resolvedPath = isRelative && projectPath ? resolveRelative(projectPath, path) : path
+  // If relative but no project path context, can't resolve — render as plain text
+  const unresolvable = isRelative && !projectPath
+  const cacheKey = resolvedPath
+
   const [status, setStatus] = useState<'loading' | 'exists' | 'missing'>(
-    () => probeCache.get(path) ?? 'loading',
+    () => unresolvable ? 'missing' : (probeCache.get(cacheKey) ?? 'loading'),
   )
 
   useEffect(() => {
-    if (probeCache.has(path)) return
+    if (unresolvable || probeCache.has(cacheKey)) return
     let cancelled = false
 
     authFetch(buildApiUrl('/api/files/probe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paths: [path] }),
+      body: JSON.stringify({ paths: [resolvedPath] }),
     })
       .then(r => r.json())
       .then((data: { results?: Record<string, { exists?: boolean }> }) => {
         if (cancelled) return
-        const exists = data?.results?.[path]?.exists ?? false
+        const exists = data?.results?.[resolvedPath]?.exists ?? false
         const result: 'exists' | 'missing' = exists ? 'exists' : 'missing'
-        probeCache.set(path, result)
+        probeCache.set(cacheKey, result)
         setStatus(result)
       })
       .catch(() => {
         if (!cancelled) {
-          probeCache.set(path, 'missing')
+          probeCache.set(cacheKey, 'missing')
           setStatus('missing')
         }
       })
 
     return () => { cancelled = true }
-  }, [path])
+  }, [cacheKey, resolvedPath])
 
   if (status === 'missing') {
+    // Relative paths that don't exist: render as plain text to avoid false-positive styling
+    if (isRelative) return <span className={extraClass}>{path}</span>
     return (
       <code className={cn('font-mono text-[0.85em]', extraClass)}>
         {path}
@@ -59,9 +85,9 @@ export function FilePathLink({
     )
   }
 
-  const dir = getDirPath(path)
+  const dir = getDirPath(resolvedPath)
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || ''
-  const fileHref = `${base}/file-preview?path=${encodeURIComponent(path)}`
+  const fileHref = `${base}/file-preview?path=${encodeURIComponent(resolvedPath)}`
   const dirHref = `${base}/files?path=${encodeURIComponent(dir)}`
 
   const handleClick = (e: React.MouseEvent) => {
@@ -82,7 +108,7 @@ export function FilePathLink({
     authFetch(buildApiUrl('/api/files/open'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path: resolvedPath }),
     }).catch(() => {})
   }
 
