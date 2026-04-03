@@ -20,9 +20,23 @@ struct InputBarView: View {
     @Binding var prefillText: String
     @Binding var externalAttachments: [ImageAttachment]
 
+    private static let promptSlogans = [
+        "描述你的想法，代码自己生长...",
+        "有什么 bug？说来听听...",
+        "把想法告诉我，我来实现...",
+        "今天想构建什么？",
+        "用自然语言写代码...",
+        "输入需求，剩下的交给我...",
+        "下一个功能是什么？",
+        "遇到问题了？告诉我...",
+        "一句话，搞定代码...",
+        "说说你的想法...",
+    ]
+
     @State private var text: String = ""
     @State private var attachments: [ImageAttachment] = []
     @State private var selectedItem: PhotosPickerItem? = nil
+    @State private var currentSlogan = InputBarView.promptSlogans.randomElement() ?? "有什么需要帮忙的？"
     @State private var showMcpPopover = false
     @State private var sdkProbing = false
     @State private var showCanvas = false
@@ -190,11 +204,11 @@ struct InputBarView: View {
 
             // Text input
             TextField(
-                speechService.isRecording ? "Listening..." : (isLLMRecording ? "Recording..." : "Send message to \(currentModel.isEmpty ? "Claude Code" : currentModel)"),
+                speechService.isRecording ? "Listening..." : (isLLMRecording ? "Recording..." : currentSlogan),
                 text: $text,
                 axis: .vertical
             )
-                .lineLimit(1...5)
+                .lineLimit(3...8)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .focused($isFocused)
@@ -305,6 +319,7 @@ struct InputBarView: View {
                                    let image = UIImage(data: data),
                                    let attachment = ImageCompressor.compressImage(image) {
                                     attachments.append(attachment)
+                                    isFocused = true
                                 }
                             }
                         }
@@ -527,6 +542,9 @@ struct InputBarView: View {
                     showCamera = false
                     if let attachment = ImageCompressor.compressImage(image) {
                         attachments.append(attachment)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            isFocused = true
+                        }
                     }
                 },
                 onCancel: { showCamera = false }

@@ -102,6 +102,9 @@ export class SessionManager {
   /**
    * List sessions for a project using SDK as source of truth.
    * Merges SDK session data with our stored SessionMeta.
+   * Falls back to in-memory metas for sessions the SDK fails to list
+   * (e.g. when the first message is a large image that overflows the SDK's
+   * 64 KB head buffer, making firstPrompt/lastPrompt unextractable).
    */
   async listForProject(projectId: string, projectPath: string): Promise<SessionInfo[]> {
     // Query SDK for sessions in this project directory
@@ -114,6 +117,8 @@ export class SessionManager {
         metasBySessionId.set(meta.sdkSessionId, meta)
       }
     }
+
+    const sdkSessionIds = new Set(sdkSessions.map((s) => s.sessionId))
 
     const result: SessionInfo[] = sdkSessions.map((sdk) => {
       const meta = metasBySessionId.get(sdk.sessionId)
@@ -130,6 +135,23 @@ export class SessionManager {
         providerId: meta?.providerId,
       }
     })
+
+    // Include sessions known to us but missing from the SDK list.
+    // This covers cases where the SDK's buffer-based summary extraction fails
+    // (e.g. large image as first message) or the JSONL hasn't been flushed yet.
+    for (const meta of metasBySessionId.values()) {
+      if (sdkSessionIds.has(meta.sdkSessionId)) continue
+      result.push({
+        sessionId: meta.sdkSessionId,
+        summary: '',
+        lastModified: meta.createdAt ?? 0,
+        projectId,
+        status: meta.status ?? 'idle',
+        isActive: meta.status === 'processing',
+        cronJobName: meta.cronJobName,
+        providerId: meta.providerId,
+      })
+    }
 
     // Sort by last modified desc
     result.sort((a, b) => b.lastModified - a.lastModified)

@@ -546,7 +546,9 @@ struct ChatView: View {
             return wsService.sendCommand(text)
         } else {
             // Separate enabled custom MCPs from disabled SDK servers/skills (mirrors web)
-            let enabledCustomMcps = mcps?.filter { !$0.hasPrefix("sdk:") && !$0.hasPrefix("skill:") }
+            let filteredCustomMcps = mcps?.filter { !$0.hasPrefix("sdk:") && !$0.hasPrefix("skill:") }
+            // Send nil (not empty array) when no custom MCPs selected, so server enables all extensions by default
+            let enabledCustomMcps: [String]? = (filteredCustomMcps?.isEmpty == true) ? nil : filteredCustomMcps
             let disabledSdkServers = sdkMcpEntries
                 .filter { !enabledIds.contains($0.id) }
                 .map { $0.name }
