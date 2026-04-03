@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { cn } from '@/lib/utils'
 import { stripMetaTags } from '@/lib/utils'
 import {
@@ -324,7 +326,7 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
 function TextBlock({ content }: { content: string }) {
   return (
     <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeFilePaths]} components={mdComponents}>
         {stripMetaTags(content)}
       </ReactMarkdown>
     </div>
@@ -445,7 +447,7 @@ function MessageBubble({ msg }: { msg: ChatMsg }) {
                 {isUser ? (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 ) : (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeFilePaths]} components={mdComponents}>
                     {stripMetaTags(msg.content)}
                   </ReactMarkdown>
                 )}
@@ -502,7 +504,7 @@ function StreamingIndicator({
 
         {streamingText ? (
           <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeFilePaths]} components={mdComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex, rehypeFilePaths]} components={mdComponents}>
               {stripMetaTags(streamingText)}
             </ReactMarkdown>
           </div>

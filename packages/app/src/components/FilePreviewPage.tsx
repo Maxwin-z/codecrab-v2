@@ -5,6 +5,8 @@ import { buildApiUrl } from '@/lib/server'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { FileText, File, Hash, Eye, FileCode, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -214,7 +216,8 @@ export function FilePreviewPage() {
             ) : isMarkdown && showRendered ? (
               <div className="p-8 max-w-4xl mx-auto prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:text-foreground prose-code:text-foreground">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
                   components={{
                     img({ src, alt }) {
                       const apiUrl = resolveImageApiUrl(src ?? '', filePath)

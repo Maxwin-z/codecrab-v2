@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { AgentAvatar, isAvatarImage } from '@/components/AgentAvatar'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { useSearchParams, useNavigate } from 'react-router'
 import { useStore } from '@/store/store'
 import { selectThread } from '@/store/selectors'
@@ -221,7 +223,7 @@ function ChatBubbleRow({
         >
           {renderMarkdown ? (
             <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-pre:bg-background/60 prose-pre:text-foreground prose-code:text-foreground prose-p:my-1 prose-headings:my-1">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{message.content}</ReactMarkdown>
             </div>
           ) : (
             <p className="text-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">

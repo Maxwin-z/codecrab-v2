@@ -17,6 +17,7 @@ import { useIsDesktop } from '@/hooks/useMediaQuery'
 import { checkAuthStatus, verifyToken, setToken, clearToken, getToken } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import './index.css'
+import 'katex/dist/katex.min.css'
 
 const SIDEBAR_MIN = 160
 const SIDEBAR_MAX = 480
