@@ -261,6 +261,8 @@ class WebSocketService: ObservableObject {
             guard let serverURLStr = UserDefaults.standard.string(forKey: "codecrab_server_url"),
                   let token = KeychainHelper.shared.getToken() else { return }
             self.reconnectAttempts = 0
+            // Clear the debounce set so server's project_statuses is trusted on fresh connect
+            self.recentlyEndedProjectIds.removeAll()
 
             let wsURLStr = serverURLStr.replacingOccurrences(of: "http://", with: "ws://")
                                        .replacingOccurrences(of: "https://", with: "wss://")
@@ -430,8 +432,14 @@ class WebSocketService: ObservableObject {
             }
         case "query_end":
             if let pid = projectId {
-                runningProjectIds.remove(pid)
-                recentlyEndedProjectIds.insert(pid)
+                let hasBg = json["hasBackgroundTasks"] as? Bool ?? false
+                if hasBg {
+                    // Background tasks still running — keep project in runningProjectIds.
+                    // session_status_changed: idle will remove it when tasks complete.
+                } else {
+                    runningProjectIds.remove(pid)
+                    recentlyEndedProjectIds.insert(pid)
+                }
             }
             if isCurrentProject, let pid = projectId {
                 self.isAborting = false
@@ -1081,8 +1089,14 @@ class WebSocketService: ObservableObject {
             guard let pid = projectId, let sid = msgSessionId else { break }
             let newStatus = json["status"] as? String ?? "idle"
             modifySessionState(projectId: pid, sessionId: sid) { $0.status = newStatus }
-            if isCurrentProject && sid == sessionId {
-                // No direct @Published for session status — tracked in session state
+            // Keep runningProjectIds in sync with authoritative session status
+            if newStatus == "processing" {
+                if !recentlyEndedProjectIds.contains(pid) {
+                    runningProjectIds.insert(pid)
+                }
+            } else if newStatus == "idle" || newStatus == "error" || newStatus == "paused" {
+                runningProjectIds.remove(pid)
+                recentlyEndedProjectIds.remove(pid)
             }
         case "background_task_update":
             guard let pid = projectId, let sid = msgSessionId else { break }
@@ -1277,6 +1291,8 @@ class WebSocketService: ObservableObject {
             // Strip inline metadata tags from assistant messages (defensive cleanup)
             let cleanContent = (role == "assistant") ? cleanStreamingText(content) : content
 
+            let thinking = msgDict["thinking"] as? String
+
             // Parse image refs from summary (URL-based, no base64)
             var images: [ImageAttachment]? = nil
             if let imagesArray = msgDict["images"] as? [[String: Any]], !imagesArray.isEmpty {
@@ -1294,6 +1310,7 @@ class WebSocketService: ObservableObject {
                 role: role,
                 content: cleanContent,
                 images: images,
+                thinking: thinking,
                 toolCalls: toolCalls,
                 costUsd: costUsd,
                 durationMs: durationMs,
@@ -1752,11 +1769,17 @@ class WebSocketService: ObservableObject {
         // Load cached state for instant rendering; HTTP fetch will merge incremental data
         if let cached = projectStates[projectId]?.sessionStates[newSessionId] {
             loadSessionState(cached)
+            // Only clear running state if the target session is not actively streaming.
+            // runningProjectIds is authoritative from query_start/query_end — don't clear it
+            // when resuming a session that is still generating, or the animation disappears.
+            if !cached.isStreaming {
+                runningProjectIds.remove(projectId)
+            }
         } else {
             clearSessionPublished()
             projectStates[projectId]!.sessionStates[newSessionId] = SessionChatState()
+            runningProjectIds.remove(projectId)
         }
-        runningProjectIds.remove(projectId)
         // Reset pause state when switching sessions
         self.sessionPaused = false
         self.pauseReason = nil

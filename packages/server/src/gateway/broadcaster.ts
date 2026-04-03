@@ -345,6 +345,15 @@ export class Broadcaster {
           reason: session.pendingPermissionRequest.reason || '',
         })
       }
+      // Re-send processing status so reconnecting clients know the session is still running
+      if (session?.status === 'processing') {
+        this.broadcastToProject(e.projectId, {
+          type: 'session_status_changed',
+          projectId: e.projectId,
+          sessionId: e.sessionId,
+          status: 'processing',
+        })
+      }
     })
 
     this.core.on('session:status_changed', (e) => {
