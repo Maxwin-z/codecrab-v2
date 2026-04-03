@@ -170,6 +170,7 @@ export class TurnManager {
       type: params.type,
       startTime: Date.now(),
       pauseReason: null as string | null,  // set when a recoverable error is detected
+      resultReceived: false,               // set when the SDK sends a result event
     }
 
     try {
@@ -192,6 +193,18 @@ export class TurnManager {
 
       for await (const event of stream) {
         this.handleStreamEvent(event, ctx)
+      }
+
+      // Stream ended without a result event — connection lost, API timeout, etc.
+      // Emit an error so the client knows the turn was incomplete.
+      if (!ctx.resultReceived && !abortController.signal.aborted) {
+        tsLog(`${tag} ${C.yellow}⚠ stream ended without result${C.reset}  session=${ctx.sessionId.slice(0, 12)}…`)
+        this.core.emit('turn:error', {
+          projectId: ctx.projectId,
+          sessionId: ctx.sessionId,
+          turnId,
+          error: 'Response interrupted.',
+        })
       }
     } catch (error: any) {
       tsLog(`${tag} ${C.red}${C.bold}✗ error${C.reset}  project=${C.bold}${projectName}${C.reset}  ${error.message || 'Unknown error'}`)
@@ -249,6 +262,7 @@ export class TurnManager {
       type: TurnType
       startTime: number
       pauseReason: string | null
+      resultReceived: boolean
     },
   ): void {
     switch (event.type) {
@@ -356,6 +370,7 @@ export class TurnManager {
       }
 
       case 'result': {
+        ctx.resultReceived = true
         const durationSec = (event.durationMs / 1000).toFixed(1)
         const costStr = event.costUsd != null ? `$${event.costUsd.toFixed(4)}` : '?'
         const pName = this.core.projects.get(ctx.projectId)?.name || ctx.projectId
