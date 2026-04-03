@@ -104,6 +104,7 @@ struct EditAgentView: View {
                             sdkEvents: wsService.sdkEvents,
                             onResumeSession: { _ in }
                         )
+                        .environment(\.projectPath, systemProjectPath ?? "")
                         .padding()
 
                         GeometryReader { geo in

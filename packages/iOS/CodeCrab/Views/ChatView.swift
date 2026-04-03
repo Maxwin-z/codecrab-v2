@@ -233,6 +233,7 @@ struct ChatView: View {
                                 execSessionId = sid
                             }
                         )
+                        .environment(\.projectPath, project.path)
                         .padding()
 
                         // Suggested Replies (vertical, inline with messages)

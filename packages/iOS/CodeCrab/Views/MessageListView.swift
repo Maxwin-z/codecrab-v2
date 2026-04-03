@@ -1,5 +1,52 @@
 import SwiftUI
 
+// MARK: - File path action modifier (shared by text and tool-result views)
+
+private struct FilePathActionsModifier: ViewModifier {
+    @Binding var tappedPath: String?
+    @Binding var previewFilePath: String?
+    @Binding var browseDirectoryPath: String?
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                tappedPath.map { ($0 as NSString).lastPathComponent } ?? "",
+                isPresented: Binding(get: { tappedPath != nil }, set: { if !$0 { tappedPath = nil } }),
+                titleVisibility: .visible
+            ) {
+                if let path = tappedPath {
+                    Button("Preview file") { previewFilePath = path; tappedPath = nil }
+                    Button("Open directory") { browseDirectoryPath = (path as NSString).deletingLastPathComponent; tappedPath = nil }
+                    Button("Open on computer") {
+                        Task {
+                            struct OpenReq: Encodable { let path: String }
+                            struct OpenRes: Decodable { let success: Bool }
+                            _ = try? await APIClient.shared.fetch(path: "/api/files/open", method: "POST", body: OpenReq(path: path)) as OpenRes
+                        }
+                        tappedPath = nil
+                    }
+                    Button("Cancel", role: .cancel) { tappedPath = nil }
+                }
+            }
+            .sheet(isPresented: Binding(get: { previewFilePath != nil }, set: { if !$0 { previewFilePath = nil } })) {
+                if let path = previewFilePath {
+                    FilePreviewSheet(filePath: path, fileName: (path as NSString).lastPathComponent)
+                }
+            }
+            .sheet(isPresented: Binding(get: { browseDirectoryPath != nil }, set: { if !$0 { browseDirectoryPath = nil } })) {
+                if let dirPath = browseDirectoryPath {
+                    FileBrowserView(projectPath: dirPath)
+                }
+            }
+    }
+}
+
+private extension View {
+    func filePathActions(tappedPath: Binding<String?>, previewFilePath: Binding<String?>, browseDirectoryPath: Binding<String?>) -> some View {
+        modifier(FilePathActionsModifier(tappedPath: tappedPath, previewFilePath: previewFilePath, browseDirectoryPath: browseDirectoryPath))
+    }
+}
+
 // MARK: - Turn group (user message + agent response events)
 
 struct TurnGroup: Identifiable {
@@ -95,6 +142,7 @@ struct AgentResponseView: View {
     var onResumeSession: ((String) -> Void)? = nil
     @State private var showDebug = false
     @State private var renderMarkdown: Bool
+    @State private var streamingThinkingExpanded: Bool = false
 
     init(events: [SdkEvent], isStreaming: Bool, streamingThinking: String = "", streamingText: String = "", onResumeSession: ((String) -> Void)? = nil) {
         self.events = events
@@ -141,21 +189,43 @@ struct AgentResponseView: View {
             // Live streaming content (before "Generating..." indicator)
             if isStreaming {
                 if !streamingThinking.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .medium))
-                        Text("🧠")
-                            .font(.caption)
-                        Text("Thinking")
-                            .font(.callout)
-                            .fontDesign(.monospaced)
-                        Text(streamingThinking.components(separatedBy: .newlines).joined(separator: " "))
-                            .font(.caption)
-                            .fontDesign(.monospaced)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(action: { withAnimation(.easeInOut(duration: 0.15)) { streamingThinkingExpanded.toggle() } }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: streamingThinkingExpanded ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 10, weight: .medium))
+                                Text("🧠")
+                                    .font(.caption)
+                                Text("Thinking")
+                                    .font(.callout)
+                                    .fontDesign(.monospaced)
+                                    .layoutPriority(1)
+                                if !streamingThinkingExpanded {
+                                    Text(streamingThinking.components(separatedBy: .newlines).joined(separator: " "))
+                                        .font(.caption)
+                                        .fontDesign(.monospaced)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                            }
+                            .foregroundColor(.orange.opacity(0.8))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        if streamingThinkingExpanded {
+                            InlineSelectableText(
+                                text: streamingThinking,
+                                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .regular),
+                                textColor: .secondaryLabel
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
-                    .foregroundColor(.orange.opacity(0.8))
+                    .onChange(of: isStreaming) { _, streaming in
+                        if !streaming {
+                            withAnimation { streamingThinkingExpanded = false }
+                        }
+                    }
                 }
                 if !streamingText.isEmpty {
                     let displayText = streamingText
@@ -253,8 +323,11 @@ struct MessageModeEventView: View {
 private struct MessageModeTextView: View {
     let event: SdkEvent
     var renderMarkdown: Bool = false
-    @State private var existingPaths: Set<String> = []
+    @Environment(\.projectPath) private var projectPath
+    @State private var pathMap: [String: String] = [:]
     @State private var previewFilePath: String? = nil
+    @State private var browseDirectoryPath: String? = nil
+    @State private var tappedPath: String? = nil
 
     private var content: String {
         guard let data = event.data, case .string(let c) = data["content"] else { return "" }
@@ -268,8 +341,8 @@ private struct MessageModeTextView: View {
         if !content.isEmpty {
             Group {
                 if renderMarkdown {
-                    MarkdownContentView(content: content)
-                } else if existingPaths.isEmpty {
+                    MarkdownContentView(content: content, pathMap: pathMap, onPathTap: { path in tappedPath = path })
+                } else if pathMap.isEmpty {
                     InlineSelectableText(
                         text: content,
                         font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular),
@@ -280,30 +353,15 @@ private struct MessageModeTextView: View {
                         text: content,
                         font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular),
                         textColor: .label,
-                        existingPaths: existingPaths,
-                        onPathTap: { path in
-                            previewFilePath = path
-                        }
+                        pathMap: pathMap,
+                        onPathTap: { path in tappedPath = path }
                     )
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .sheet(isPresented: Binding(
-                get: { previewFilePath != nil },
-                set: { if !$0 { previewFilePath = nil } }
-            )) {
-                if let path = previewFilePath {
-                    FilePreviewSheet(
-                        filePath: path,
-                        fileName: (path as NSString).lastPathComponent
-                    )
-                }
-            }
+            .filePathActions(tappedPath: $tappedPath, previewFilePath: $previewFilePath, browseDirectoryPath: $browseDirectoryPath)
             .task(id: content) {
-                let detected = extractFilePaths(from: content)
-                guard !detected.isEmpty else { return }
-                let found = await probeFilePaths(detected)
-                existingPaths = found
+                pathMap = await buildPathMap(from: content, projectPath: projectPath)
             }
         }
     }
@@ -313,6 +371,8 @@ private struct MessageModeTextView: View {
 
 private struct MarkdownContentView: View {
     let content: String
+    var pathMap: [String: String] = [:]
+    var onPathTap: ((String) -> Void)? = nil
 
     private enum TableAlignment {
         case left, center, right
@@ -462,7 +522,7 @@ private struct MarkdownContentView: View {
                 case .code(let language, let code):
                     codeBlockView(language: language, code: code)
                 case .text(let text):
-                    inlineMarkdownView(text)
+                    textBlockView(text)
                 case .table(let headers, let alignments, let rows):
                     tableView(headers: headers, alignments: alignments, rows: rows)
                 }
@@ -494,6 +554,25 @@ private struct MarkdownContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(8)
+    }
+
+    // MARK: Text Block (with optional path linking)
+
+    @ViewBuilder
+    private func textBlockView(_ text: String) -> some View {
+        let blockMap = pathMap.filter { text.contains($0.key) }
+        if blockMap.isEmpty {
+            inlineMarkdownView(text)
+        } else {
+            FileLinkedTextView(
+                text: text,
+                font: UIFont.preferredFont(forTextStyle: .body),
+                textColor: .label,
+                pathMap: blockMap,
+                onPathTap: onPathTap
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: Inline Markdown
@@ -735,11 +814,20 @@ private struct MessageModeToolUseView: View {
 private struct MessageModeToolResultView: View {
     let event: SdkEvent
     let isStreaming: Bool
+    @Environment(\.projectPath) private var projectPath
     @State private var expanded: Bool = false
+    @State private var pathMap: [String: String] = [:]
+    @State private var tappedPath: String? = nil
+    @State private var previewFilePath: String? = nil
+    @State private var browseDirectoryPath: String? = nil
 
     private var content: String {
         guard let data = event.data, case .string(let c) = data["content"] else { return "" }
         return c
+    }
+
+    private var displayContent: String {
+        content.count > 300 ? String(content.prefix(300)) + "\n… (truncated)" : content
     }
 
     private var isError: Bool {
@@ -795,15 +883,33 @@ private struct MessageModeToolResultView: View {
                 .buttonStyle(PlainButtonStyle())
 
                 if expanded {
-                    InlineSelectableText(
-                        text: content.count > 300 ? String(content.prefix(300)) + "\n… (truncated)" : content,
-                        font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
-                        textColor: isError ? .systemRed : .secondaryLabel
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 18)
-                    .padding(.top, 4)
+                    let blockMap = pathMap.filter { displayContent.contains($0.key) }
+                    if blockMap.isEmpty {
+                        InlineSelectableText(
+                            text: displayContent,
+                            font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                            textColor: isError ? .systemRed : .secondaryLabel
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 18)
+                        .padding(.top, 4)
+                    } else {
+                        FileLinkedTextView(
+                            text: displayContent,
+                            font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                            textColor: isError ? .systemRed : .secondaryLabel,
+                            pathMap: blockMap,
+                            onPathTap: { path in tappedPath = path }
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 18)
+                        .padding(.top, 4)
+                    }
                 }
+            }
+            .filePathActions(tappedPath: $tappedPath, previewFilePath: $previewFilePath, browseDirectoryPath: $browseDirectoryPath)
+            .task(id: content) {
+                pathMap = await buildPathMap(from: content, projectPath: projectPath)
             }
         }
     }

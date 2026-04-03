@@ -1,5 +1,17 @@
 import SwiftUI
 
+// MARK: - Environment: project path
+
+struct ProjectPathKey: EnvironmentKey {
+    static let defaultValue: String = ""
+}
+extension EnvironmentValues {
+    var projectPath: String {
+        get { self[ProjectPathKey.self] }
+        set { self[ProjectPathKey.self] = newValue }
+    }
+}
+
 // MARK: - File path detection & probing
 
 /// Detectable file extensions for path linking
@@ -17,24 +29,39 @@ private let detectableExtsPattern =
     "txt|csv|log|env|ini|cfg|conf|" +
     "pdf"
 
-private let filePathRegex: NSRegularExpression? = {
+/// Matches absolute paths like /foo/bar/baz.ts (or with line number :123)
+private let absPathRegex: NSRegularExpression? = {
     try? NSRegularExpression(
         pattern: "((?:/[\\w@.+-]+)+\\.(?:\(detectableExtsPattern)))(?::\\d+)?\\b",
         options: [.caseInsensitive]
     )
 }()
 
-/// Extract unique absolute file paths from text
+/// Matches relative paths like foo/bar/baz.mp4 — must contain at least one slash
+/// Negative lookbehind prevents matching the tail of an absolute path or a URL
+private let relPathRegex: NSRegularExpression? = {
+    try? NSRegularExpression(
+        pattern: "(?<![:/\\w\"'])((?:[\\w@.+-]+/)+[\\w@.+-]+\\.(?:\(detectableExtsPattern)))(?::\\d+)?\\b",
+        options: [.caseInsensitive]
+    )
+}()
+
+/// Extract unique file paths (absolute and relative) from text
 func extractFilePaths(from text: String) -> [String] {
-    guard let regex = filePathRegex else { return [] }
     let range = NSRange(text.startIndex..., in: text)
-    let matches = regex.matches(in: text, range: range)
     var paths = Set<String>()
-    for match in matches {
-        if let pathRange = Range(match.range(at: 1), in: text) {
-            paths.insert(String(text[pathRange]))
+
+    func collect(regex: NSRegularExpression?) {
+        guard let regex else { return }
+        for match in regex.matches(in: text, range: range) {
+            if let r = Range(match.range(at: 1), in: text) {
+                paths.insert(String(text[r]))
+            }
         }
     }
+
+    collect(regex: absPathRegex)
+    collect(regex: relPathRegex)
     return Array(paths)
 }
 
@@ -50,10 +77,10 @@ struct ProbeResponse: Codable {
     let results: [String: ProbeResult]
 }
 
-/// In-memory probe cache to avoid re-probing identical paths
+/// In-memory probe cache (resolvedAbsolutePath → exists)
 private var probeCache: [String: Bool] = [:]
 
-/// Probe the server for file existence (batch)
+/// Probe the server for file existence (batch, by absolute paths)
 func probeFilePaths(_ paths: [String]) async -> Set<String> {
     guard !paths.isEmpty else { return [] }
 
@@ -70,6 +97,8 @@ func probeFilePaths(_ paths: [String]) async -> Set<String> {
 
     guard !uncached.isEmpty else { return existing }
 
+    print("[FileLink] Probing \(uncached.count) path(s): \(uncached)")
+
     do {
         struct ProbeRequest: Encodable { let paths: [String] }
         let response: ProbeResponse = try await APIClient.shared.fetch(
@@ -82,22 +111,59 @@ func probeFilePaths(_ paths: [String]) async -> Set<String> {
             probeCache[p] = valid
             if valid { existing.insert(p) }
         }
+        print("[FileLink] Probe results: \(response.results.mapValues { "\($0.exists)/\($0.isFile)" })")
     } catch {
-        // silently ignore probe errors
+        print("[FileLink] Probe error: \(error)")
     }
 
     return existing
 }
 
+/// Build a display→resolved path map for text, resolving relative paths via projectPath.
+/// Returns only entries where the resolved path exists on the server.
+func buildPathMap(from text: String, projectPath: String) async -> [String: String] {
+    let detected = extractFilePaths(from: text)
+    print("[FileLink] Detected paths in text: \(detected)")
+    guard !detected.isEmpty else { return [:] }
+
+    // Map display text → resolved absolute path
+    var displayToResolved: [String: String] = [:]
+    for display in detected {
+        if display.hasPrefix("/") {
+            displayToResolved[display] = display
+        } else if !projectPath.isEmpty {
+            let base = projectPath.hasSuffix("/") ? String(projectPath.dropLast()) : projectPath
+            displayToResolved[display] = base + "/" + display
+        } else {
+            print("[FileLink] Skipping relative path '\(display)' — no projectPath available")
+        }
+    }
+
+    guard !displayToResolved.isEmpty else { return [:] }
+
+    let resolvedPaths = Array(Set(displayToResolved.values))
+    let found = await probeFilePaths(resolvedPaths)
+
+    var result: [String: String] = [:]
+    for (display, resolved) in displayToResolved {
+        if found.contains(resolved) {
+            result[display] = resolved
+            print("[FileLink] Linked: '\(display)' → '\(resolved)'")
+        }
+    }
+    return result
+}
+
 // MARK: - FileLinkedTextView (UIViewRepresentable)
 
 /// A UITextView wrapper that renders text with file paths as tappable links.
-/// Detected paths that exist on the server are highlighted in blue and underlined.
+/// pathMap: display text (as it appears in the message) → resolved absolute path
 struct FileLinkedTextView: UIViewRepresentable {
     let text: String
     var font: UIFont = .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
     var textColor: UIColor = .label
-    let existingPaths: Set<String>
+    /// display text → resolved absolute path
+    let pathMap: [String: String]
     var onPathTap: ((String) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -125,10 +191,9 @@ struct FileLinkedTextView: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         context.coordinator.onPathTap = onPathTap
         let newAttr = buildAttributedString()
-        // Only update if content changed
-        if uiView.attributedText?.string != text || context.coordinator.lastPaths != existingPaths {
+        if uiView.attributedText?.string != text || context.coordinator.lastPathMap != pathMap {
             uiView.attributedText = newAttr
-            context.coordinator.lastPaths = existingPaths
+            context.coordinator.lastPathMap = pathMap
             uiView.invalidateIntrinsicContentSize()
         }
     }
@@ -145,16 +210,17 @@ struct FileLinkedTextView: UIViewRepresentable {
             .foregroundColor: textColor,
         ]
         let result = NSMutableAttributedString(string: text, attributes: attrs)
+        let nsText = text as NSString
 
-        for path in existingPaths {
+        for (displayPath, resolvedPath) in pathMap {
             var searchStart = 0
-            let nsText = text as NSString
             while searchStart < nsText.length {
                 let searchRange = NSRange(location: searchStart, length: nsText.length - searchStart)
-                let range = nsText.range(of: path, options: [], range: searchRange)
+                let range = nsText.range(of: displayPath, options: [], range: searchRange)
                 if range.location == NSNotFound { break }
-                // Use a custom URL scheme so we can intercept taps
-                if let url = URL(string: "filepreview://\(path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path)") {
+                // Encode the resolved absolute path in the URL
+                if let encoded = resolvedPath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                   let url = URL(string: "filepreview://\(encoded)") {
                     result.addAttribute(.link, value: url, range: range)
                 }
                 searchStart = range.location + range.length
@@ -166,15 +232,15 @@ struct FileLinkedTextView: UIViewRepresentable {
 
     class Coordinator: NSObject, UITextViewDelegate {
         var onPathTap: ((String) -> Void)?
-        var lastPaths: Set<String> = []
+        var lastPathMap: [String: String] = [:]
 
         func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem, defaultAction: UIAction) -> UIAction? {
             if case .link(let url) = textItem.content, url.scheme == "filepreview" {
                 return UIAction { _ in
-                    let path = url.absoluteString
+                    let resolvedPath = url.absoluteString
                         .replacingOccurrences(of: "filepreview://", with: "")
                         .removingPercentEncoding ?? url.path
-                    self.onPathTap?(path)
+                    self.onPathTap?(resolvedPath)
                 }
             }
             return defaultAction
