@@ -109,12 +109,13 @@ export function SessionSidebar({
                 <p className="text-sm font-medium truncate flex-1">
                   {s.summary || s.firstPrompt || 'Untitled session'}
                 </p>
-                <button
+                <div
+                  role="button"
                   className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-destructive transition-all cursor-pointer"
                   onClick={(e) => handleDelete(e, s.sessionId)}
                 >
                   <Trash2 className="h-3 w-3" />
-                </button>
+                </div>
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <Clock className="h-3 w-3 text-muted-foreground" />

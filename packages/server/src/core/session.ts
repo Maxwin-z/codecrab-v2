@@ -279,12 +279,12 @@ export class SessionManager {
   /**
    * Resolve the JSONL file path for a session.
    * Claude Code stores sessions at: ~/.claude/projects/<encoded-path>/<sessionId>.jsonl
-   * where <encoded-path> is the project path with all '/' replaced by '-'.
+   * where <encoded-path> is the project path with all non-alphanumeric characters replaced by '-'.
    */
   private resolveJsonlPath(sessionId: string, projectPath?: string): string {
     const claudeDir = join(homedir(), '.claude', 'projects')
     if (projectPath) {
-      const encoded = projectPath.replace(/\//g, '-')
+      const encoded = projectPath.replace(/[^a-zA-Z0-9]/g, '-')
       return join(claudeDir, encoded, `${sessionId}.jsonl`)
     }
     // Fallback: look up from in-memory meta
