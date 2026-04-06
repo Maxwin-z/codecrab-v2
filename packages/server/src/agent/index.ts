@@ -111,6 +111,10 @@ const SAFE_MODE_ALLOWED_TOOLS: readonly string[] = [
   'mcp__cron__cron_list',
   'mcp__cron__cron_delete',
   'mcp__cron__cron_get',
+  'mcp__cron__cron_pause',
+  'mcp__cron__cron_resume',
+  'mcp__cron__cron_update',
+  'mcp__cron__cron_trigger',
 ]
 
 // ── Default query constants ─────────────────────────────────────────────────
@@ -385,11 +389,11 @@ export class ClaudeAgent implements AgentInterface {
           `\n\nWhen the MCP cron tools are available (mcp__cron__cron_create, mcp__cron__cron_list, mcp__cron__cron_delete, mcp__cron__cron_get), ` +
           `you MUST use them instead of the system CronCreate/CronDelete/CronList tools for all scheduling tasks. ` +
           `The MCP cron tools provide persistent scheduled tasks that survive server restarts, while the system cron tools are session-only and will be lost when the session ends.` +
-          `\n\nSCHEDULING GUIDE: cron_create supports three modes:` +
-          `\n- 'schedule' (cron expression): for RECURRING tasks only (e.g., "every day at 9am" → schedule: "0 9 * * *")` +
-          `\n- 'delay': for one-time tasks relative to now (e.g., "remind me in 5 minutes" → delay: "5m")` +
-          `\n- 'runAt' (ISO 8601): for one-time tasks at a specific time (e.g., "remind me at 3:30 PM" → runAt: "2026-03-27T15:30:00+08:00")` +
-          `\nNEVER use a cron expression for one-time reminders or delayed tasks — always use 'delay' or 'runAt' instead.` +
+          `\n\nSCHEDULING GUIDE: cron_create accepts a natural-language 'when' parameter:` +
+          `\n- One-time: "in 5 minutes", "tomorrow at 9am", "2026-04-10T15:30:00+08:00"` +
+          `\n- Recurring (set recurring=true): "every hour", "every 30 minutes", or pass cronExpression="0 9 * * *"` +
+          `\n- Timezone: use the timezone parameter for cron schedules (e.g., "Asia/Shanghai")` +
+          `\nFor reminders the prompt MUST instruct the AI to call push_send. Use deleteAfterRun=true (default for one-shot) to auto-clean after execution.` +
           `\n\nINTER-AGENT COMMUNICATION: When you need to send messages to other agents (referenced as @agentName in user prompts or your CLAUDE.md), ` +
           `you MUST use the thread-based inter-agent tools (mcp__threads__*). These tools create collaboration threads ` +
           `and automatically resume the target agent to process your message. Do NOT use any other messaging tools.` +

@@ -1290,7 +1290,7 @@ class WebSocketService: ObservableObject {
 
     // MARK: - Message Parsing Helpers
 
-    private func parseMessageHistory(_ messagesJson: [[String: Any]]) -> [ChatMessage] {
+    nonisolated private func parseMessageHistory(_ messagesJson: [[String: Any]]) -> [ChatMessage] {
         var loadedMessages: [ChatMessage] = []
         for msgDict in messagesJson {
             guard let id = msgDict["id"] as? String,
@@ -1353,7 +1353,7 @@ class WebSocketService: ObservableObject {
     }
 
     /// Parse Any JSON value to JSONValue enum
-    private func parseJSONValue(_ value: Any) -> JSONValue {
+    nonisolated private func parseJSONValue(_ value: Any) -> JSONValue {
         if let str = value as? String {
             return .string(str)
         } else if let num = value as? Double {
@@ -1379,33 +1379,43 @@ class WebSocketService: ObservableObject {
     /// Fetch session history via HTTP.
     /// Server-v2 returns {sessionId, messages: ChatMessage[]}
     private func fetchSessionHistory(sessionId sid: String) {
-        Task { @MainActor in
+        // Capture main-actor values before hopping off.
+        guard let serverURL = UserDefaults.standard.string(forKey: "codecrab_server_url") else { return }
+        let urlStr = "\(serverURL)/api/sessions/\(sid)/history"
+        guard let url = URL(string: urlStr) else { return }
+        let token = KeychainHelper.shared.getToken()
+
+        Task {
             do {
-                guard let serverURL = UserDefaults.standard.string(forKey: "codecrab_server_url") else { return }
-
-                let urlStr = "\(serverURL)/api/sessions/\(sid)/history"
-                guard let url = URL(string: urlStr) else { return }
-
                 var request = URLRequest(url: url)
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                if let token = KeychainHelper.shared.getToken() {
-                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                if let t = token {
+                    request.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
                 }
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else { return }
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
-                if let messagesJson = json["messages"] as? [[String: Any]], !messagesJson.isEmpty {
-                    let newMessages = parseMessageHistory(messagesJson)
-                    let synthesizedEvents = self.chatMessagesToSdkEvents(newMessages)
-                    if sid == self.sessionId {
-                        self.messages = newMessages
-                        self.sdkEvents = synthesizedEvents
-                    } else if let pid = self.activeProjectId {
-                        modifySessionState(projectId: pid, sessionId: sid) {
-                            $0.messages = newMessages
-                            $0.sdkEvents = synthesizedEvents
-                        }
+                // Parse JSON and synthesize SdkEvents on a background thread so the
+                // main actor isn't blocked by JSONSerialization + JSONEncoder work.
+                let result = await Task.detached(priority: .userInitiated) { [weak self] () -> ([ChatMessage], [SdkEvent])? in
+                    guard let self else { return nil }
+                    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let messagesJson = json["messages"] as? [[String: Any]], !messagesJson.isEmpty
+                    else { return nil }
+                    let msgs = self.parseMessageHistory(messagesJson)
+                    let events = self.chatMessagesToSdkEvents(msgs)
+                    return (msgs, events)
+                }.value
+
+                guard let (newMessages, synthesizedEvents) = result else { return }
+                // Back on main actor: update @Published state.
+                if sid == self.sessionId {
+                    self.messages = newMessages
+                    self.sdkEvents = synthesizedEvents
+                } else if let pid = self.activeProjectId {
+                    self.modifySessionState(projectId: pid, sessionId: sid) {
+                        $0.messages = newMessages
+                        $0.sdkEvents = synthesizedEvents
                     }
                 }
             } catch {
@@ -1417,7 +1427,7 @@ class WebSocketService: ObservableObject {
     /// Convert ChatMessage history into SdkEvent array for rendering.
     /// The MessageListView renders agent responses via SdkEvents, so we synthesize
     /// them from assistant/system ChatMessages when loading session history.
-    func chatMessagesToSdkEvents(_ messages: [ChatMessage]) -> [SdkEvent] {
+    nonisolated func chatMessagesToSdkEvents(_ messages: [ChatMessage]) -> [SdkEvent] {
         var events: [SdkEvent] = []
         var offset = 0.001  // sub-ms offset to preserve ordering within a message
 
@@ -1536,7 +1546,7 @@ class WebSocketService: ObservableObject {
         return result
     }
 
-    private func cleanStreamingText(_ text: String) -> String {
+    nonisolated private func cleanStreamingText(_ text: String) -> String {
         return text
             .replacingOccurrences(of: "\\n?\\[SUGGESTIONS:[\\s\\S]*?\\]", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\n?\\[SUMMARY:[\\s\\S]*?\\]", with: "", options: .regularExpression)

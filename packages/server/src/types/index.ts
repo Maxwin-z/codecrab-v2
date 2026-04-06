@@ -480,34 +480,52 @@ export interface Client {
 
 // ============ Cron Types ============
 
-export interface CronJob {
-  id: string
-  projectId: string
-  sessionId: string
-  name: string
-  schedule: string
-  prompt: string
-  enabled: boolean
-  createdAt: number
-  updatedAt: number
-  lastRunAt?: number
-  lastRunStatus?: 'success' | 'failure'
-  /** 'cron' = recurring (default), 'at' = one-shot at a specific time */
-  type?: 'cron' | 'at'
-  /** Epoch ms — absolute time for one-shot execution */
-  runAt?: number
+export type CronSchedule =
+  | { kind: 'at'; at: string }           // ISO 8601 one-shot
+  | { kind: 'every'; everyMs: number }   // millisecond interval
+  | { kind: 'cron'; expr: string; tz?: string } // cron expression + optional timezone
+
+export type CronJobStatus =
+  | 'pending'    // waiting to execute
+  | 'running'    // currently executing
+  | 'completed'  // executed successfully (one-shot)
+  | 'failed'     // execution failed (after all retries)
+  | 'disabled'   // manually paused
+  | 'deprecated' // soft-deleted (preserved for debugging)
+
+export interface CronJobContext {
+  projectId?: string
+  sessionId?: string       // session that created the job
+  parentSessionId?: string // parent session for nested contexts
 }
 
-export interface CronExecution {
+export interface CronJob {
+  id: string
+  name: string
+  description?: string
+  schedule: CronSchedule
+  prompt: string
+  context: CronJobContext
+  status: CronJobStatus
+  createdAt: string  // ISO 8601
+  updatedAt: string  // ISO 8601
+  lastRunAt?: string // ISO 8601
+  nextRunAt?: string // ISO 8601
+  runCount: number
+  maxRuns?: number
+  deleteAfterRun?: boolean
+  deprecatedAt?: string
+}
+
+export interface CronJobRun {
+  id: string
   jobId: string
-  jobName: string
-  projectId: string
-  sessionId: string
-  execSessionId: string
-  startedAt: number
-  completedAt?: number
-  success?: boolean
+  startedAt: string  // ISO 8601
+  endedAt?: string   // ISO 8601
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  output?: string
   error?: string
+  durationMs?: number
 }
 
 // ============ Thread Types (Inter-Agent Communication) ============

@@ -5,8 +5,8 @@
 
 import { z } from 'zod/v4'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
-import cron from 'node-cron'
 import type { CronScheduler } from '../../../cron/scheduler.js'
+import { CronScheduler as CronSchedulerClass } from '../../../cron/scheduler.js'
 import type { CronJob } from '../../../types/index.js'
 
 // ── Injected state ─────────────────────────────────────────────────────────
@@ -36,41 +36,22 @@ function notFound(jobId: string) {
   return { content: [{ type: 'text' as const, text: `Task not found: ${jobId}` }], isError: true }
 }
 
-function formatScheduleStr(job: CronJob): string {
-  const jobType = job.type || 'cron'
-  if (jobType === 'at' && job.runAt) {
-    return `one-time at ${new Date(job.runAt).toLocaleString()}`
+function formatSchedule(job: CronJob): string {
+  const s = job.schedule
+  switch (s.kind) {
+    case 'at':
+      return `at ${new Date(s.at).toLocaleString()}`
+    case 'every': {
+      const mins = Math.round(s.everyMs / 60_000)
+      if (mins < 60) return `every ${mins} minute${mins !== 1 ? 's' : ''}`
+      const hours = Math.round(mins / 60)
+      if (hours < 24) return `every ${hours} hour${hours !== 1 ? 's' : ''}`
+      const days = Math.round(hours / 24)
+      return `every ${days} day${days !== 1 ? 's' : ''}`
+    }
+    case 'cron':
+      return `cron "${s.expr}"${s.tz ? ` (${s.tz})` : ''}`
   }
-  return `cron "${job.schedule}"`
-}
-
-function formatJob(job: CronJob): string {
-  const jobType = job.type || 'cron'
-  let status: string
-  if (jobType === 'at' && !job.enabled && job.lastRunAt) {
-    status = 'completed'
-  } else {
-    status = job.enabled ? 'active' : 'paused'
-  }
-  const lastRun = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : 'never'
-  return `- ${job.name} (${job.id}): ${formatScheduleStr(job)} | ${status} | last run: ${lastRun}`
-}
-
-/**
- * Parse a human-readable delay string (e.g., "5m", "1h", "30s", "2d") into milliseconds.
- */
-function parseDelay(delay: string): number {
-  const match = delay.match(/^(\d+(?:\.\d+)?)\s*(s|sec|m|min|h|hr|d|day)s?$/i)
-  if (!match) throw new Error(`Invalid delay format: "${delay}". Use e.g. "5m", "1h", "30s", "2d".`)
-  const value = parseFloat(match[1])
-  const unit = match[2].toLowerCase()
-  const multipliers: Record<string, number> = {
-    s: 1000, sec: 1000,
-    m: 60_000, min: 60_000,
-    h: 3_600_000, hr: 3_600_000,
-    d: 86_400_000, day: 86_400_000,
-  }
-  return Math.round(value * multipliers[unit])
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
@@ -78,57 +59,33 @@ function parseDelay(delay: string): number {
 export const tools = [
   tool(
     'cron_create',
-    `Create a scheduled task. Supports three scheduling modes (provide exactly one):
-- 'schedule': Recurring cron expression (e.g., "*/5 * * * *" for every 5 min, "0 9 * * *" for daily 9am)
-- 'runAt': One-time execution at a specific time (ISO 8601, e.g., "2026-03-27T15:30:00+08:00")
-- 'delay': One-time execution after a delay from now (e.g., "30s", "5m", "1h", "2d")
+    `Create a scheduled task that will execute automatically at a specific time or on a recurring schedule.
 
-For one-time reminders or delayed tasks, use 'delay' or 'runAt' — do NOT use 'schedule' for one-shot tasks.
+Use this tool when the user asks to:
+- Set a reminder (e.g., "remind me in 5 minutes")
+- Schedule a task (e.g., "check email every hour")
+- Perform an action later (e.g., "tomorrow morning check the logs")
+
+The 'when' parameter accepts natural language like "1 minute later", "5 minutes from now", "tomorrow at 9am", "every hour", or cron expression "0 9 * * *".
 
 CRITICAL - The 'prompt' parameter is the instruction that will be executed when the scheduled time arrives. For reminders, the prompt MUST explicitly instruct the AI to send a push notification using the push_send tool.`,
     {
       name: z.string().describe('A descriptive name for this scheduled task'),
-      schedule: z
-        .string()
-        .optional()
-        .describe(
-          'Cron expression for recurring tasks (e.g., "*/5 * * * *" for every 5 min, "0 9 * * *" for daily at 9am)',
-        ),
-      runAt: z
-        .string()
-        .optional()
-        .describe(
-          'ISO 8601 timestamp for one-time execution (e.g., "2026-03-27T15:30:00+08:00")',
-        ),
-      delay: z
-        .string()
-        .optional()
-        .describe(
-          'Delay before one-time execution (e.g., "30s", "5m", "1h", "2d")',
-        ),
-      prompt: z
-        .string()
-        .describe('The instruction to execute at the scheduled time'),
-      // Context fields — auto-injected via setCronQueryContext fallback
+      when: z.string().describe(
+        'When to execute: natural language like "10 minutes later", "tomorrow at 9am", "every hour", or cron expression "0 9 * * *"',
+      ),
+      prompt: z.string().describe('The instruction to execute at the scheduled time'),
+      recurring: z.boolean().optional().describe('Whether this is a recurring task (default: false)'),
+      cronExpression: z.string().optional().describe('Optional explicit cron expression for recurring tasks (e.g., "0 9 * * *")'),
+      timezone: z.string().optional().describe('Optional timezone for cron schedules (e.g., "Asia/Shanghai")'),
+      description: z.string().optional().describe('Optional description or notes about this task'),
+      deleteAfterRun: z.boolean().optional().describe('For one-time tasks, auto-delete after execution (default: true for one-shot)'),
+      // Context fields — auto-injected via setCronQueryContext
       projectId: z.string().optional().describe('Project ID (auto-injected)'),
       sessionId: z.string().optional().describe('Session ID (auto-injected)'),
     },
     async (input) => {
       if (!scheduler) return notReady()
-
-      // Validate exactly one scheduling mode
-      const modes = [input.schedule, input.runAt, input.delay].filter(Boolean)
-      if (modes.length !== 1) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: 'Provide exactly one of: schedule, runAt, or delay.',
-            },
-          ],
-          isError: true,
-        }
-      }
 
       const projectId = input.projectId || queryContext.projectId
       const sessionId = input.sessionId || queryContext.sessionId
@@ -140,94 +97,58 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
         }
       }
 
-      // ── Recurring cron ──────────────────────────────────────────────
-      if (input.schedule) {
-        if (!cron.validate(input.schedule)) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: `Invalid cron expression: "${input.schedule}". Use standard cron format, e.g. "*/5 * * * *" (every 5 min), "0 9 * * *" (daily 9am), "0 0 * * 1" (Monday midnight).`,
-              },
-            ],
-            isError: true,
-          }
-        }
+      const isRecurring = input.recurring || !!input.cronExpression
+      const scheduleInput = input.cronExpression || input.when
+      const parsed = CronSchedulerClass.parseSchedule(scheduleInput, isRecurring)
 
-        const job = await scheduler.create({
-          projectId,
-          sessionId,
-          name: input.name,
-          schedule: input.schedule,
-          prompt: input.prompt,
-          enabled: true,
-          type: 'cron',
-        })
-
+      if (!parsed.isValid) {
         return {
           content: [
             {
               type: 'text' as const,
-              text: `Created recurring task "${job.name}" (cron "${job.schedule}").\n\nTask ID: ${job.id}`,
+              text: `Could not parse schedule: "${input.when}". Try formats like "10 minutes later", "tomorrow at 9am", "every hour", or cron expression "0 9 * * *"`,
             },
           ],
+          isError: true,
         }
       }
 
-      // ── One-shot: resolve runAt ─────────────────────────────────────
-      let runAtMs: number
-
-      if (input.runAt) {
-        const parsed = new Date(input.runAt)
-        if (isNaN(parsed.getTime())) {
+      // Ensure one-shot is in the future
+      if (parsed.schedule.kind === 'at') {
+        const runTime = new Date(parsed.schedule.at)
+        if (runTime.getTime() <= Date.now()) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: `Invalid timestamp: "${input.runAt}". Use ISO 8601 format, e.g. "2026-03-27T15:30:00+08:00".`,
+                text: `Scheduled time "${input.when}" is in the past. Please specify a future time.`,
               },
             ],
             isError: true,
           }
         }
-        runAtMs = parsed.getTime()
-      } else {
-        // delay
-        try {
-          const delayMs = parseDelay(input.delay!)
-          runAtMs = Date.now() + delayMs
-        } catch (err: any) {
-          return {
-            content: [{ type: 'text' as const, text: err.message }],
-            isError: true,
-          }
-        }
       }
 
-      if (runAtMs <= Date.now()) {
-        return {
-          content: [{ type: 'text' as const, text: 'The scheduled time must be in the future.' }],
-          isError: true,
-        }
+      if (parsed.schedule.kind === 'cron' && input.timezone) {
+        parsed.schedule.tz = input.timezone
       }
 
-      const job = await scheduler.create({
-        projectId,
-        sessionId,
+      const job = scheduler.create({
         name: input.name,
-        schedule: '', // empty for one-shot
+        description: input.description,
+        schedule: parsed.schedule,
         prompt: input.prompt,
-        enabled: true,
-        type: 'at',
-        runAt: runAtMs,
+        context: { projectId, sessionId },
+        status: 'pending',
+        deleteAfterRun: input.deleteAfterRun ?? parsed.schedule.kind === 'at',
       })
 
-      const runAtDate = new Date(runAtMs)
+      const scheduleDesc = formatSchedule(job)
       return {
         content: [
           {
             type: 'text' as const,
-            text: `Created one-time task "${job.name}" scheduled for ${runAtDate.toLocaleString()}.\n\nTask ID: ${job.id}`,
+            text: `Created scheduled task "${job.name}" (${scheduleDesc}).\n\nTask ID: ${job.id}\nNext run: ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : 'N/A'}`,
           },
         ],
       }
@@ -236,25 +157,28 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
 
   tool(
     'cron_list',
-    'List all scheduled tasks, optionally filtered by project.',
+    'List all scheduled tasks, optionally filtered by status.',
     {
-      limit: z
-        .number()
-        .optional()
-        .describe('Maximum number of tasks to return (default: 20)'),
+      status: z.string().optional().describe(
+        'Filter by status: pending, running, completed, failed, disabled, deprecated. Deprecated tasks are hidden by default.',
+      ),
+      limit: z.number().optional().describe('Maximum number of tasks to return (default: 20)'),
     },
     async (input) => {
       if (!scheduler) return notReady()
 
       const projectId = queryContext.projectId
-      const jobs = await scheduler.list(projectId)
-      const limited = jobs.slice(0, input.limit || 20)
+      const jobs = scheduler.list(projectId)
+      const filtered = input.status ? jobs.filter((j) => j.status === input.status) : jobs
+      const limited = filtered.slice(0, input.limit || 20)
 
       if (limited.length === 0) {
         return { content: [{ type: 'text' as const, text: 'No scheduled tasks found.' }] }
       }
 
-      const formatted = limited.map(formatJob)
+      const formatted = limited.map(
+        (j) => `- ${j.name} (${j.id}): ${formatSchedule(j)} | status: ${j.status} | runs: ${j.runCount}`,
+      )
       return {
         content: [
           {
@@ -275,35 +199,27 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      const history = await scheduler.getHistory(input.jobId, 5)
-
-      const jobType = job.type || 'cron'
-      let statusStr: string
-      if (jobType === 'at' && !job.enabled && job.lastRunAt) {
-        statusStr = 'completed'
-      } else {
-        statusStr = job.enabled ? 'active' : 'paused'
-      }
+      const runs = scheduler.getHistory(input.jobId, 5)
 
       const details = `Task: ${job.name}
 ID: ${job.id}
-Type: ${jobType === 'at' ? 'one-time' : 'recurring'}
-Status: ${statusStr}
-Schedule: ${formatScheduleStr(job)}
+Status: ${job.status}
+Schedule: ${formatSchedule(job)}
 Prompt: ${job.prompt}
-Last run: ${job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : 'never'}
-Last run status: ${job.lastRunStatus || 'N/A'}
+Next run: ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : 'N/A'}
+Last run: ${job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : 'N/A'}
+Run count: ${job.runCount}${job.maxRuns ? ` / ${job.maxRuns}` : ''}
 Created: ${new Date(job.createdAt).toLocaleString()}
 
-Recent executions (${history.length}):
+Recent runs (${runs.length}):
 ${
-  history
+  runs
     .map(
-      (h) =>
-        `- ${h.success ? 'success' : 'failed'} at ${new Date(h.startedAt).toLocaleString()}${h.error ? ` (${h.error})` : ''}`,
+      (r) =>
+        `- ${r.status} at ${new Date(r.startedAt).toLocaleString()}${r.durationMs ? ` (${r.durationMs}ms)` : ''}${r.error ? ` — ${r.error}` : ''}`,
     )
     .join('\n') || 'None'
 }`
@@ -314,21 +230,28 @@ ${
 
   tool(
     'cron_delete',
-    'Delete a scheduled task by its ID. The task will be permanently removed.',
+    'Delete (deprecate) a scheduled task by its ID. The task is marked as deprecated rather than physically removed, preserving it for debugging.',
     {
       jobId: z.string().describe('The ID of the task to delete'),
     },
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      await scheduler.delete(input.jobId)
+      if (job.status === 'deprecated') {
+        return { content: [{ type: 'text' as const, text: `Task "${job.name}" is already deprecated.` }] }
+      }
+
+      scheduler.delete(input.jobId)
 
       return {
         content: [
-          { type: 'text' as const, text: `Deleted scheduled task "${job.name}" (${job.id}).` },
+          {
+            type: 'text' as const,
+            text: `Deprecated scheduled task "${job.name}" (${job.id}). The task is preserved for debugging but will no longer execute.`,
+          },
         ],
       }
     },
@@ -343,16 +266,26 @@ ${
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      if (!job.enabled) {
+      if (job.status === 'disabled') {
+        return { content: [{ type: 'text' as const, text: `Task "${job.name}" is already paused.` }] }
+      }
+
+      if (job.status === 'completed' || job.status === 'failed' || job.status === 'deprecated') {
         return {
-          content: [{ type: 'text' as const, text: `Task "${job.name}" is already paused.` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Cannot pause a task with status "${job.status}". Only pending or running tasks can be paused.`,
+            },
+          ],
+          isError: true,
         }
       }
 
-      await scheduler.pause(input.jobId)
+      scheduler.pause(input.jobId)
 
       return {
         content: [
@@ -371,31 +304,49 @@ ${
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      if (job.enabled) {
+      if (job.status === 'deprecated') {
         return {
           content: [
-            { type: 'text' as const, text: `Task "${job.name}" is already active (not paused).` },
+            { type: 'text' as const, text: `Task "${job.name}" is deprecated and cannot be resumed.` },
           ],
-        }
-      }
-
-      try {
-        await scheduler.resume(input.jobId)
-      } catch (err: any) {
-        return {
-          content: [{ type: 'text' as const, text: err.message }],
           isError: true,
         }
       }
 
+      if (job.status !== 'disabled' && job.status !== 'failed') {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Task "${job.name}" is not paused or failed (current status: ${job.status}).`,
+            },
+          ],
+          isError: true,
+        }
+      }
+
+      const scheduled = scheduler.resume(input.jobId)
+      if (!scheduled) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Resumed task "${job.name}" but failed to reschedule. The schedule may have expired.`,
+            },
+          ],
+          isError: true,
+        }
+      }
+
+      const updated = scheduler.get(input.jobId)
       return {
         content: [
           {
             type: 'text' as const,
-            text: `Resumed task "${job.name}" (${job.id}).\nSchedule: ${formatScheduleStr(job)}`,
+            text: `Resumed task "${job.name}" (${job.id}).\nSchedule: ${formatSchedule(job)}\nNext run: ${updated?.nextRunAt ? new Date(updated.nextRunAt).toLocaleString() : 'N/A'}`,
           },
         ],
       }
@@ -404,72 +355,94 @@ ${
 
   tool(
     'cron_update',
-    'Update an existing scheduled task. Only provide the fields you want to change.',
+    'Update an existing scheduled task. You can modify the name, prompt, description, schedule, and other properties. Only provide the fields you want to change.',
     {
       jobId: z.string().describe('The ID of the task to update'),
       name: z.string().optional().describe('New name for the task'),
       prompt: z.string().optional().describe('New prompt/instruction for the task'),
-      schedule: z
-        .string()
-        .optional()
-        .describe('New cron expression for recurring tasks (e.g., "0 9 * * *")'),
-      runAt: z
-        .string()
-        .optional()
-        .describe('New ISO 8601 timestamp for one-time tasks'),
+      description: z.string().optional().describe('New description'),
+      when: z.string().optional().describe(
+        'New schedule: natural language like "10 minutes later", "every 2 hours", or cron expression',
+      ),
+      recurring: z.boolean().optional().describe('Whether this is a recurring task'),
+      cronExpression: z.string().optional().describe('New cron expression (e.g., "0 9 * * *")'),
+      timezone: z.string().optional().describe('New timezone (e.g., "Asia/Shanghai")'),
+      deleteAfterRun: z.boolean().optional().describe('Auto-delete after execution'),
+      maxRuns: z.number().optional().describe('Maximum number of runs (0 to remove limit)'),
     },
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      if (input.schedule && !cron.validate(input.schedule)) {
-        return {
-          content: [
-            { type: 'text' as const, text: `Invalid cron expression: "${input.schedule}".` },
-          ],
-          isError: true,
-        }
-      }
-
       const changes: string[] = []
+
       if (input.name !== undefined) changes.push(`name → "${input.name}"`)
       if (input.prompt !== undefined) changes.push('prompt updated')
-      if (input.schedule !== undefined) changes.push(`schedule → cron "${input.schedule}"`)
+      if (input.description !== undefined) changes.push('description updated')
+      if (input.deleteAfterRun !== undefined) changes.push(`deleteAfterRun → ${input.deleteAfterRun}`)
+      if (input.maxRuns !== undefined) changes.push(`maxRuns → ${input.maxRuns === 0 ? 'unlimited' : input.maxRuns}`)
 
-      // Handle runAt update for one-shot tasks
-      let runAtMs: number | undefined
-      if (input.runAt !== undefined) {
-        const parsed = new Date(input.runAt)
-        if (isNaN(parsed.getTime())) {
+      // Parse new schedule if provided
+      let newSchedule = undefined
+      if (input.when || input.cronExpression) {
+        const isRecurring = input.recurring ?? (job.schedule.kind === 'cron' || job.schedule.kind === 'every')
+        const scheduleInput = input.cronExpression || input.when!
+        const parsed = CronSchedulerClass.parseSchedule(scheduleInput, isRecurring)
+
+        if (!parsed.isValid) {
           return {
             content: [
-              { type: 'text' as const, text: `Invalid timestamp: "${input.runAt}". Use ISO 8601 format.` },
+              {
+                type: 'text' as const,
+                text: `Could not parse schedule: "${input.when || input.cronExpression}". Try formats like "10 minutes later", "every 2 hours", or cron expression "0 9 * * *"`,
+              },
             ],
             isError: true,
           }
         }
-        runAtMs = parsed.getTime()
-        changes.push(`runAt → ${parsed.toLocaleString()}`)
+
+        if (parsed.schedule.kind === 'at' && new Date(parsed.schedule.at).getTime() <= Date.now()) {
+          return {
+            content: [{ type: 'text' as const, text: 'Scheduled time is in the past. Please specify a future time.' }],
+            isError: true,
+          }
+        }
+
+        if (input.timezone && parsed.schedule.kind === 'cron') {
+          parsed.schedule.tz = input.timezone
+        }
+
+        newSchedule = parsed.schedule
+        changes.push(`schedule → ${formatSchedule({ ...job, schedule: newSchedule })}`)
+      } else if (input.timezone && job.schedule.kind === 'cron') {
+        newSchedule = { ...job.schedule, tz: input.timezone }
+        changes.push(`timezone → ${input.timezone}`)
       }
 
       if (changes.length === 0) {
         return { content: [{ type: 'text' as const, text: 'No changes specified.' }], isError: true }
       }
 
-      await scheduler.update(input.jobId, {
+      const updated = scheduler.update(input.jobId, {
         name: input.name,
         prompt: input.prompt,
-        schedule: input.schedule,
-        runAt: runAtMs,
+        description: input.description,
+        schedule: newSchedule,
+        deleteAfterRun: input.deleteAfterRun,
+        maxRuns: input.maxRuns,
       })
 
       return {
         content: [
           {
             type: 'text' as const,
-            text: `Updated task "${job.name}" (${job.id}):\n${changes.map((c) => `  • ${c}`).join('\n')}`,
+            text: `Updated task "${job.name}" (${job.id}):\n${changes.map((c) => `  • ${c}`).join('\n')}${
+              newSchedule && updated?.nextRunAt
+                ? `\nNext run: ${new Date(updated.nextRunAt).toLocaleString()}`
+                : ''
+            }`,
           },
         ],
       }
@@ -485,10 +458,19 @@ ${
     async (input) => {
       if (!scheduler) return notReady()
 
-      const job = await scheduler.get(input.jobId)
+      const job = scheduler.get(input.jobId)
       if (!job) return notFound(input.jobId)
 
-      await scheduler.trigger(input.jobId)
+      if (job.status === 'running') {
+        return {
+          content: [
+            { type: 'text' as const, text: `Task "${job.name}" is already running. Wait for it to complete.` },
+          ],
+          isError: true,
+        }
+      }
+
+      scheduler.trigger(input.jobId)
 
       return {
         content: [

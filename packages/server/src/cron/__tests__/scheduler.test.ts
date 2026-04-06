@@ -20,14 +20,14 @@ function createMockCore(): CoreEngine {
 function makeCronJob(overrides: Partial<CronJob> = {}): CronJob {
   return {
     id: `cron-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    projectId: 'proj-1',
-    sessionId: 'sess-1',
     name: 'Test Job',
-    schedule: '* * * * *',  // every minute
+    schedule: { kind: 'cron', expr: '* * * * *' },
     prompt: 'Run tests',
-    enabled: true,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    context: { projectId: 'proj-1', sessionId: 'sess-1' },
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    runCount: 0,
     ...overrides,
   }
 }
@@ -39,14 +39,8 @@ describe('CronScheduler', () => {
 
   beforeEach(async () => {
     core = createMockCore()
-    scheduler = new CronScheduler(core)
-
-    // Create a temp directory for store/history
     tmpDir = await mkdtemp(join(tmpdir(), 'cron-test-'))
-
-    // Override the internal store and history to use temp dir
-    ;(scheduler as any).store = new (await import('../store.js')).CronStore(join(tmpDir, 'jobs'))
-    ;(scheduler as any).history = new (await import('../history.js')).CronHistory(join(tmpDir, 'history'))
+    scheduler = new CronScheduler(core, tmpDir)
   })
 
   afterEach(async () => {
@@ -59,20 +53,18 @@ describe('CronScheduler', () => {
       const job = makeCronJob()
       scheduler.schedule(job)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(true)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(true)
     })
 
     it('should reject an invalid cron expression', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const job = makeCronJob({ schedule: 'not-a-cron' })
-      scheduler.schedule(job)
+      const job = makeCronJob({ schedule: { kind: 'cron', expr: 'not-a-cron' } })
+      const result = scheduler.schedule(job)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(false)
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Cron] Invalid schedule'),
-      )
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(false)
+      expect(result).toBe(false)
       consoleSpy.mockRestore()
     })
 
@@ -81,8 +73,8 @@ describe('CronScheduler', () => {
       scheduler.schedule(job)
       scheduler.schedule(job)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.size).toBe(1)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.size).toBe(1)
     })
   })
 
@@ -91,16 +83,15 @@ describe('CronScheduler', () => {
       const job = makeCronJob()
       scheduler.schedule(job)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(true)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(true)
 
       scheduler.cancel(job.id)
-      expect(scheduledJobs.has(job.id)).toBe(false)
+      expect(scheduledTasks.has(job.id)).toBe(false)
     })
 
     it('should be a no-op for non-existent job', () => {
-      // Should not throw
-      scheduler.cancel('non-existent')
+      expect(() => scheduler.cancel('non-existent')).not.toThrow()
     })
   })
 
@@ -111,176 +102,271 @@ describe('CronScheduler', () => {
       scheduler.schedule(job1)
       scheduler.schedule(job2)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.size).toBe(2)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.size).toBe(2)
 
       scheduler.destroy()
-      expect(scheduledJobs.size).toBe(0)
+      expect(scheduledTasks.size).toBe(0)
     })
   })
 
-  describe('executeJob', () => {
+  describe('triggerJob / retry', () => {
     it('should call core.submitTurn with correct params', async () => {
       const job = makeCronJob({
-        projectId: 'proj-test',
-        sessionId: 'sess-test',
+        context: { projectId: 'proj-test', sessionId: 'sess-test' },
         prompt: 'Do the thing',
         name: 'My Cron',
       })
 
-      // Access private method via prototype
-      await (scheduler as any).executeJob(job)
+      await (scheduler as any).triggerJob(job)
 
-      expect((core.submitTurn as any)).toHaveBeenCalledWith({
-        projectId: 'proj-test',
-        sessionId: 'sess-test',
-        prompt: 'Do the thing',
-        type: 'cron',
-        metadata: {
-          cronJobId: job.id,
-          cronJobName: 'My Cron',
-        },
-      })
+      expect(core.submitTurn as any).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: 'proj-test',
+          sessionId: 'sess-test',
+          prompt: 'Do the thing',
+          type: 'cron',
+        }),
+      )
     })
 
-    it('should update lastRunStatus to success on success', async () => {
+    it('should set status to pending and increment runCount on success', async () => {
       const job = makeCronJob()
       ;(core.submitTurn as any).mockResolvedValue('query-ok')
 
-      await (scheduler as any).executeJob(job)
+      await (scheduler as any).triggerJob(job)
 
-      expect(job.lastRunStatus).toBe('success')
+      expect(job.status).toBe('pending')
+      expect(job.runCount).toBe(1)
       expect(job.lastRunAt).toBeDefined()
     })
 
-    it('should update lastRunStatus to failure on error', async () => {
+    it('should set status to failed after all retries exhausted', async () => {
       const job = makeCronJob()
       ;(core.submitTurn as any).mockRejectedValue(new Error('boom'))
 
-      await (scheduler as any).executeJob(job)
+      // Shorten retry delays for testing
+      vi.spyOn(global, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any })
 
-      expect(job.lastRunStatus).toBe('failure')
-      expect(job.lastRunAt).toBeDefined()
+      await (scheduler as any).triggerJob(job)
+
+      expect(job.status).toBe('failed')
+      vi.restoreAllMocks()
+    })
+
+    it('should append runs to store on success and failure', async () => {
+      const job = makeCronJob()
+      ;(core.submitTurn as any).mockResolvedValue('ok')
+
+      vi.spyOn(global, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any })
+      await (scheduler as any).triggerJob(job)
+      vi.restoreAllMocks()
+
+      const store = (scheduler as any).store
+      const runs = store.getRuns(job.id)
+      expect(runs.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('should auto-delete one-shot job when deleteAfterRun=true', async () => {
+      const runAt = new Date(Date.now() + 10_000).toISOString()
+      const job = makeCronJob({
+        schedule: { kind: 'at', at: runAt },
+        deleteAfterRun: true,
+      })
+      ;(core.submitTurn as any).mockResolvedValue('ok')
+
+      await (scheduler as any).triggerJob(job)
+
+      // Job should be deprecated (soft-deleted)
+      const store = (scheduler as any).store
+      const stored = store.getJob(job.id)
+      expect(stored?.status).toBe('deprecated')
+    })
+
+    it('should disable job when maxRuns reached', async () => {
+      const job = makeCronJob({ maxRuns: 1, runCount: 0 })
+      ;(core.submitTurn as any).mockResolvedValue('ok')
+
+      await (scheduler as any).triggerJob(job)
+
+      expect(job.runCount).toBe(1)
+      expect(job.status).toBe('disabled')
     })
   })
 
   describe('pause', () => {
-    it('should disable a job and stop scheduling', async () => {
+    it('should set status to disabled and stop scheduling', () => {
       const job = makeCronJob()
-      // Save the job first so pause can find it
-      await (scheduler as any).store.save(job)
+      const store = (scheduler as any).store
+      store.saveJob(job)
       scheduler.schedule(job)
 
-      await scheduler.pause(job.id)
+      scheduler.pause(job.id)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(false)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(false)
 
-      const stored = await (scheduler as any).store.get(job.id)
-      expect(stored.enabled).toBe(false)
+      const stored = store.getJob(job.id)
+      expect(stored.status).toBe('disabled')
     })
   })
 
   describe('resume', () => {
-    it('should re-enable and re-schedule a paused job', async () => {
-      const job = makeCronJob({ enabled: false })
-      await (scheduler as any).store.save(job)
+    it('should set status to pending and re-schedule', () => {
+      const job = makeCronJob({ status: 'disabled' })
+      const store = (scheduler as any).store
+      store.saveJob(job)
 
-      await scheduler.resume(job.id)
+      const result = scheduler.resume(job.id)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(true)
+      expect(result).toBe(true)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(true)
 
-      const stored = await (scheduler as any).store.get(job.id)
-      expect(stored.enabled).toBe(true)
+      const stored = store.getJob(job.id)
+      expect(stored.status).toBe('pending')
     })
   })
 
   describe('create', () => {
-    it('should generate an ID and save to store', async () => {
-      const created = await scheduler.create({
-        projectId: 'proj-1',
-        sessionId: 'sess-1',
+    it('should generate an ID and save to store', () => {
+      const created = scheduler.create({
         name: 'New Job',
-        schedule: '*/5 * * * *',
+        schedule: { kind: 'cron', expr: '*/5 * * * *' },
         prompt: 'Check status',
-        enabled: true,
+        context: { projectId: 'proj-1', sessionId: 'sess-1' },
+        status: 'pending',
       })
 
       expect(created.id).toMatch(/^cron-/)
       expect(created.name).toBe('New Job')
       expect(created.createdAt).toBeDefined()
+      expect(created.runCount).toBe(0)
 
-      const stored = await (scheduler as any).store.get(created.id)
-      expect(stored).not.toBeNull()
-      expect(stored.name).toBe('New Job')
+      const store = (scheduler as any).store
+      expect(store.getJob(created.id)).not.toBeUndefined()
     })
 
-    it('should schedule the job if enabled', async () => {
-      const created = await scheduler.create({
-        projectId: 'proj-1',
-        sessionId: 'sess-1',
+    it('should schedule the job when status is pending', () => {
+      const created = scheduler.create({
         name: 'Enabled Job',
-        schedule: '*/10 * * * *',
+        schedule: { kind: 'cron', expr: '*/10 * * * *' },
         prompt: 'Run',
-        enabled: true,
+        context: { projectId: 'proj-1', sessionId: 'sess-1' },
+        status: 'pending',
       })
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(created.id)).toBe(true)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(created.id)).toBe(true)
     })
 
-    it('should not schedule the job if disabled', async () => {
-      const created = await scheduler.create({
-        projectId: 'proj-1',
-        sessionId: 'sess-1',
+    it('should not schedule when status is disabled', () => {
+      const created = scheduler.create({
         name: 'Disabled Job',
-        schedule: '*/10 * * * *',
+        schedule: { kind: 'cron', expr: '*/10 * * * *' },
         prompt: 'Run',
-        enabled: false,
+        context: { projectId: 'proj-1', sessionId: 'sess-1' },
+        status: 'disabled',
       })
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(created.id)).toBe(false)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(created.id)).toBe(false)
     })
   })
 
   describe('delete', () => {
-    it('should cancel and remove from store', async () => {
+    it('should cancel and soft-delete (deprecate) from store', () => {
       const job = makeCronJob()
-      await (scheduler as any).store.save(job)
+      const store = (scheduler as any).store
+      store.saveJob(job)
       scheduler.schedule(job)
 
-      await scheduler.delete(job.id)
+      scheduler.delete(job.id)
 
-      const scheduledJobs = (scheduler as any).scheduledJobs as Map<string, any>
-      expect(scheduledJobs.has(job.id)).toBe(false)
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.has(job.id)).toBe(false)
 
-      const stored = await (scheduler as any).store.get(job.id)
-      expect(stored).toBeNull()
+      const stored = store.getJob(job.id)
+      expect(stored?.status).toBe('deprecated')
     })
   })
 
   describe('list', () => {
-    it('should return all jobs', async () => {
-      const job1 = makeCronJob({ id: 'job-a', projectId: 'proj-1' })
-      const job2 = makeCronJob({ id: 'job-b', projectId: 'proj-2' })
-      await (scheduler as any).store.save(job1)
-      await (scheduler as any).store.save(job2)
+    it('should return all non-deprecated jobs', () => {
+      const store = (scheduler as any).store
+      store.saveJob(makeCronJob({ id: 'job-a', context: { projectId: 'proj-1', sessionId: 's' } }))
+      store.saveJob(makeCronJob({ id: 'job-b', context: { projectId: 'proj-2', sessionId: 's' } }))
 
-      const all = await scheduler.list()
+      const all = scheduler.list()
       expect(all).toHaveLength(2)
     })
 
-    it('should filter by projectId', async () => {
-      const job1 = makeCronJob({ id: 'job-a', projectId: 'proj-1' })
-      const job2 = makeCronJob({ id: 'job-b', projectId: 'proj-2' })
-      await (scheduler as any).store.save(job1)
-      await (scheduler as any).store.save(job2)
+    it('should filter by projectId', () => {
+      const store = (scheduler as any).store
+      store.saveJob(makeCronJob({ id: 'job-a', context: { projectId: 'proj-1', sessionId: 's' } }))
+      store.saveJob(makeCronJob({ id: 'job-b', context: { projectId: 'proj-2', sessionId: 's' } }))
 
-      const filtered = await scheduler.list('proj-1')
+      const filtered = scheduler.list('proj-1')
       expect(filtered).toHaveLength(1)
-      expect(filtered[0].projectId).toBe('proj-1')
+      expect(filtered[0].context.projectId).toBe('proj-1')
+    })
+  })
+
+  describe('init (catch-up)', () => {
+    it('should skip disabled/failed/completed/deprecated jobs', () => {
+      const store = (scheduler as any).store
+      store.saveJob(makeCronJob({ id: 'j1', status: 'disabled' }))
+      store.saveJob(makeCronJob({ id: 'j2', status: 'failed' }))
+      store.saveJob(makeCronJob({ id: 'j3', status: 'completed' }))
+      store.saveJob(makeCronJob({ id: 'j4', status: 'deprecated' }))
+
+      scheduler.init()
+
+      const scheduledTasks = (scheduler as any).scheduledTasks as Map<string, any>
+      expect(scheduledTasks.size).toBe(0)
+    })
+
+    it('should mark expired one-shot job as failed (conservative catch-up)', () => {
+      const store = (scheduler as any).store
+      const expiredAt = new Date(Date.now() - 60_000).toISOString()
+      const job = makeCronJob({
+        id: 'expired',
+        schedule: { kind: 'at', at: expiredAt },
+        status: 'pending',
+      })
+      store.saveJob(job)
+
+      scheduler.init()
+
+      const stored = store.getJob('expired')
+      expect(stored?.status).toBe('failed')
+    })
+  })
+
+  describe('parseSchedule', () => {
+    it('parses cron expression when recurring=true', () => {
+      const { schedule, isValid } = CronScheduler.parseSchedule('0 9 * * *', true)
+      expect(isValid).toBe(true)
+      expect(schedule.kind).toBe('cron')
+    })
+
+    it('parses "every X minutes" when recurring=true', () => {
+      const { schedule, isValid } = CronScheduler.parseSchedule('every 5 minutes', true)
+      expect(isValid).toBe(true)
+      expect(schedule.kind).toBe('every')
+      if (schedule.kind === 'every') expect(schedule.everyMs).toBe(5 * 60 * 1000)
+    })
+
+    it('parses ISO timestamp as one-shot', () => {
+      const iso = new Date(Date.now() + 60_000).toISOString()
+      const { schedule, isValid } = CronScheduler.parseSchedule(iso)
+      expect(isValid).toBe(true)
+      expect(schedule.kind).toBe('at')
+    })
+
+    it('returns isValid=false for unparseable input', () => {
+      const { isValid } = CronScheduler.parseSchedule('not-a-schedule')
+      expect(isValid).toBe(false)
     })
   })
 })

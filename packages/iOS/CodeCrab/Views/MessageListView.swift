@@ -98,7 +98,7 @@ struct MessageListView: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        LazyVStack(spacing: 4) {
             if !messages.isEmpty || !sdkEvents.isEmpty || isRunning {
                 ForEach(Array(turnGroups.enumerated()), id: \.element.id) { index, group in
                     if let userMsg = group.userMessage {
@@ -908,7 +908,10 @@ private struct MessageModeToolResultView: View {
                 }
             }
             .filePathActions(tappedPath: $tappedPath, previewFilePath: $previewFilePath, browseDirectoryPath: $browseDirectoryPath)
-            .task(id: content) {
+            .task(id: expanded) {
+                // Only probe when the result is expanded and pathMap hasn't been built yet.
+                // Avoids firing N HTTP requests on session load when all results are collapsed.
+                guard expanded, pathMap.isEmpty else { return }
                 pathMap = await buildPathMap(from: content, projectPath: projectPath)
             }
         }

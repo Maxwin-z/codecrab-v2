@@ -621,64 +621,36 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
   router.use('/api/cron', authMiddleware)
   const cronScheduler = opts?.cronScheduler
 
-  // Transform v2 CronJob to legacy-compatible response format (iOS expects this shape)
+  // Normalize CronJob for client consumption (iOS and web)
   function toClientCronJob(job: CronJob) {
-    const jobType = job.type || 'cron'
-    const isCompletedOneShot = jobType === 'at' && !job.enabled && !!job.lastRunAt
-
-    const status = isCompletedOneShot
-      ? 'completed'
-      : job.enabled
-        ? (job.lastRunStatus === 'failure' ? 'failed' : 'pending')
-        : 'disabled'
-
-    // Build schedule object matching iOS CronSchedule model
-    let schedule: { kind: string; expr?: string; at?: string }
-    if (jobType === 'at' && job.runAt) {
-      schedule = { kind: 'at', at: new Date(job.runAt).toISOString() }
-    } else {
-      schedule = { kind: 'cron', expr: job.schedule }
-    }
-
     return {
-      id: job.id,
-      name: job.name,
-      description: null,
-      schedule,
-      prompt: job.prompt,
-      context: { projectId: job.projectId, sessionId: job.sessionId },
-      status,
-      createdAt: new Date(job.createdAt).toISOString(),
-      updatedAt: new Date(job.updatedAt).toISOString(),
-      lastRunAt: job.lastRunAt ? new Date(job.lastRunAt).toISOString() : null,
-      nextRunAt: (jobType === 'at' && job.runAt && job.enabled) ? new Date(job.runAt).toISOString() : null,
-      runCount: job.lastRunAt ? 1 : 0,
-      maxRuns: jobType === 'at' ? 1 : null,
-      deleteAfterRun: false,
+      ...job,
+      description: job.description ?? null,
+      context: {
+        projectId: job.context.projectId,
+        sessionId: job.context.sessionId || job.context.parentSessionId,
+      },
+      lastRunAt: job.lastRunAt ?? null,
+      nextRunAt: job.nextRunAt ?? null,
+      maxRuns: job.maxRuns ?? null,
+      deleteAfterRun: job.deleteAfterRun ?? false,
     }
   }
 
-  router.get('/api/cron/jobs', async (req: Request, res: Response) => {
+  router.get('/api/cron/jobs', (req: Request, res: Response) => {
     if (!cronScheduler) { res.json([]); return }
     const projectId = req.query.projectId as string | undefined
     const status = req.query.status as string | undefined
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
 
-    let jobs = await cronScheduler.list(projectId)
+    let jobs = cronScheduler.list(projectId)
 
-    // Filter by status (legacy-compatible values)
-    if (status === 'enabled' || status === 'pending') {
-      jobs = jobs.filter(j => j.enabled)
-    } else if (status === 'completed') {
-      jobs = jobs.filter(j => !j.enabled && (j.type || 'cron') === 'at' && !!j.lastRunAt)
-    } else if (status === 'disabled') {
-      jobs = jobs.filter(j => !j.enabled)
-    } else if (status === 'failed') {
-      jobs = jobs.filter(j => j.lastRunStatus === 'failure')
+    if (status) {
+      jobs = jobs.filter(j => j.status === status)
     }
 
     // Sort by createdAt descending (newest first)
-    jobs.sort((a, b) => b.createdAt - a.createdAt)
+    jobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     if (limit && limit > 0) {
       jobs = jobs.slice(0, limit)
@@ -687,21 +659,21 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
     res.json(jobs.map(toClientCronJob))
   })
 
-  router.get('/api/cron/jobs/:id', async (req: Request, res: Response) => {
+  router.get('/api/cron/jobs/:id', (req: Request, res: Response) => {
     if (!cronScheduler) { res.status(404).json({ error: 'Cron scheduler not initialized' }); return }
-    const job = await cronScheduler.get(req.params.id as string)
+    const job = cronScheduler.get(req.params.id as string)
     if (!job) { res.status(404).json({ error: 'Job not found' }); return }
     res.json(toClientCronJob(job))
   })
 
-  router.get('/api/cron/jobs/:id/history', async (req: Request, res: Response) => {
+  router.get('/api/cron/jobs/:id/history', (req: Request, res: Response) => {
     if (!cronScheduler) { res.json([]); return }
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50
-    const history = await cronScheduler.getHistory(req.params.id as string, limit)
+    const history = cronScheduler.getHistory(req.params.id as string, limit)
     res.json(history)
   })
 
-  router.get('/api/cron/summary', async (_req: Request, res: Response) => {
+  router.get('/api/cron/summary', (_req: Request, res: Response) => {
     if (!cronScheduler) {
       res.json({
         totalActive: 0, totalAll: 0,
@@ -710,24 +682,19 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
       })
       return
     }
-    const jobs = await cronScheduler.list()
-    const enabledJobs = jobs.filter(j => j.enabled)
-    const disabledJobs = jobs.filter(j => !j.enabled)
-    const failedJobs = enabledJobs.filter(j => j.lastRunStatus === 'failure')
-    const pendingJobs = enabledJobs.filter(j => j.lastRunStatus !== 'failure')
-    const completedJobs = disabledJobs.filter(j => (j.type || 'cron') === 'at' && !!j.lastRunAt)
-    const pureDisabled = disabledJobs.filter(j => !((j.type || 'cron') === 'at' && !!j.lastRunAt))
+    const jobs = cronScheduler.list()
+    const byStatus = (s: string) => jobs.filter(j => j.status === s).length
 
     res.json({
-      totalActive: enabledJobs.length,
+      totalActive: jobs.filter(j => j.status === 'pending' || j.status === 'running').length,
       totalAll: jobs.length,
       statusCounts: {
-        pending: pendingJobs.length,
-        running: 0,
-        disabled: pureDisabled.length,
-        failed: failedJobs.length,
-        completed: completedJobs.length,
-        deprecated: 0,
+        pending: byStatus('pending'),
+        running: byStatus('running'),
+        disabled: byStatus('disabled'),
+        failed: byStatus('failed'),
+        completed: byStatus('completed'),
+        deprecated: byStatus('deprecated'),
       },
       nextJob: null,
     })
