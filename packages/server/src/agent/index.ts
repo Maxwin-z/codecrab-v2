@@ -5,7 +5,7 @@
 // uses a resolver pattern: canUseTool/onElicitation callbacks push events into the
 // channel and block on a Promise that the caller (TurnManager) resolves externally.
 
-import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk'
+import { query as sdkQuery, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { buildExtensionServers } from './extensions/index.js'
 import { getCronQueryContext } from './extensions/cron/tools.js'
 import { tsLog, logSdkMessage, createStreamLogState, C } from '../logger.js'
@@ -287,13 +287,13 @@ export class ClaudeAgent implements AgentInterface {
   private buildPrompt(
     prompt: string,
     images?: import('../types/index.js').ImageAttachment[],
-  ): string | AsyncIterable<{ type: 'user'; message: { role: 'user'; content: unknown[] }; parent_tool_use_id: null; session_id: string }> {
+  ): string | AsyncIterable<SDKUserMessage> {
     if (!images || images.length === 0) {
       return prompt
     }
 
     const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
-    const contentBlocks: unknown[] = []
+    const contentBlocks: Array<{ type: string; [key: string]: unknown }> = []
 
     for (const img of images) {
       if (supportedTypes.has(img.mediaType) && img.data) {
@@ -315,11 +315,11 @@ export class ClaudeAgent implements AgentInterface {
 
     contentBlocks.push({ type: 'text', text: prompt })
 
-    const userMessage = {
+    const userMessage: SDKUserMessage = {
       type: 'user' as const,
-      message: { role: 'user' as const, content: contentBlocks },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      message: { role: 'user' as const, content: contentBlocks as any },
       parent_tool_use_id: null,
-      session_id: '',
     }
 
     async function* singleMessage() {

@@ -360,6 +360,34 @@ function handleSwitchProject(core: CoreEngine, broadcaster: Broadcaster, client:
       status: core.sessions.findActive(p.id) ? 'processing' as const : 'idle' as const,
     })),
   })
+
+  // Send queue snapshot so reconnecting clients have up-to-date queue state
+  const snapshot = core.turns.getQueueSnapshot(projectId)
+  const items = [
+    ...(snapshot.running ? [{
+      queryId: snapshot.running.id,
+      status: snapshot.running.status,
+      position: 0,
+      prompt: snapshot.running.prompt,
+      queryType: snapshot.running.type,
+      sessionId: snapshot.running.sessionId,
+      cronJobName: snapshot.running.cronJobName,
+    }] : []),
+    ...snapshot.queued.map(q => ({
+      queryId: q.id,
+      status: q.status,
+      position: q.position,
+      prompt: q.prompt,
+      queryType: q.type,
+      sessionId: q.sessionId,
+      cronJobName: q.cronJobName,
+    })),
+  ]
+  broadcaster.send(client, {
+    type: 'query_queue_snapshot',
+    projectId,
+    items,
+  })
 }
 
 async function handleProbeSdk(core: CoreEngine, broadcaster: Broadcaster, client: Client, message: any): Promise<void> {

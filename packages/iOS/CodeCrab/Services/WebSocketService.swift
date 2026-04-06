@@ -124,6 +124,12 @@ class WebSocketService: ObservableObject {
     /// Cached tool detail for Live Activity — persists across heartbeat updates until activity changes
     private var currentToolDetail: String? = nil
 
+    // Incremental line trackers for O(1) getLastLineSnippet — updated per stream_delta
+    private var currentTextLine: String = ""
+    private var lastNonEmptyTextLine: String = ""
+    private var currentThinkingLine: String = ""
+    private var lastNonEmptyThinkingLine: String = ""
+
     /// Filtered streaming text that hides SUMMARY/SUGGESTIONS tags during streaming
     var displayStreamingText: String {
         getDisplayStreamingText(streamingText)
@@ -229,6 +235,7 @@ class WebSocketService: ObservableObject {
         messages = []
         streamingText = ""
         streamingThinking = ""
+        resetLineTrackers()
         sdkEvents = []
         latestSummary = nil
         suggestions = []
@@ -311,27 +318,40 @@ class WebSocketService: ObservableObject {
 
     private func receiveLoop() {
         webSocketTask?.receive { [weak self] result in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                switch result {
-                case .success(let message):
-                    // Connection is healthy — reset backoff
-                    self.reconnectAttempts = 0
-                    switch message {
-                    case .string(let text):
-                        self.handleMessage(text)
-                    case .data(let data):
-                        if let text = String(data: data, encoding: .utf8) {
-                            self.handleMessage(text)
-                        }
-                    @unknown default:
-                        break
+            // URLSession callback runs on a background queue — parse JSON here, off main thread
+            switch result {
+            case .success(let message):
+                let text: String
+                switch message {
+                case .string(let t): text = t
+                case .data(let d):
+                    guard let t = String(data: d, encoding: .utf8) else {
+                        Task { @MainActor [weak self] in self?.receiveLoop() }
+                        return
                     }
+                    text = t
+                @unknown default:
+                    Task { @MainActor [weak self] in self?.receiveLoop() }
+                    return
+                }
+                // Parse JSON on background thread before touching @MainActor state
+                guard let data = text.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let type = json["type"] as? String else {
+                    Task { @MainActor [weak self] in self?.receiveLoop() }
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.reconnectAttempts = 0
+                    self.handleMessage(type: type, json: json)
                     self.receiveLoop()
-                case .failure(let error):
+                }
+            case .failure(let error):
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     self.connected = false
                     self.webSocketTask = nil
-
                     // -1011 = NSURLErrorBadServerResponse (401 during WS handshake)
                     let nsError = error as NSError
                     if nsError.code == -1011 {
@@ -339,7 +359,6 @@ class WebSocketService: ObservableObject {
                         NotificationCenter.default.post(name: .apiUnauthorized, object: nil)
                         return
                     }
-
                     self.reconnect()
                 }
             }
@@ -348,11 +367,7 @@ class WebSocketService: ObservableObject {
 
     // MARK: - Message Handler
 
-    private func handleMessage(_ text: String) {
-        guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else { return }
-
+    private func handleMessage(type: String, json: [String: Any]) {
         let projectId = json["projectId"] as? String
         let isCurrentProject = projectId == activeProjectId
         let msgSessionId = json["sessionId"] as? String
@@ -473,6 +488,7 @@ class WebSocketService: ObservableObject {
                         }
                         self.streamingText = ""
                         self.streamingThinking = ""
+                        self.resetLineTrackers()
                     } else {
                         // Non-viewing session: flush in session state
                         modifySessionState(projectId: pid, sessionId: targetSid) { sState in
@@ -517,8 +533,11 @@ class WebSocketService: ObservableObject {
             let targetSid = msgSessionId ?? sessionId
             guard !targetSid.isEmpty else { break }
             if targetSid == sessionId {
-                if deltaType == "thinking" { self.streamingThinking += textDelta }
+                let isThinking = deltaType == "thinking"
+                if isThinking { self.streamingThinking += textDelta }
                 else { self.streamingText += textDelta }
+                // Update incremental line trackers — O(delta) not O(accumulated)
+                self.updateLineTrackers(delta: textDelta, isThinking: isThinking)
                 // Clear tool detail when streaming resumes
                 self.currentToolDetail = nil
                 // Update Live Activity with streaming state
@@ -548,6 +567,8 @@ class WebSocketService: ObservableObject {
             if targetSid == sessionId {
                 self.messages.append(assistantMsg)
                 self.streamingText = ""
+                self.currentTextLine = ""
+                self.lastNonEmptyTextLine = ""
                 self.sdkEvents.append(textEvent)
             } else {
                 modifySessionState(projectId: pid, sessionId: targetSid) {
@@ -568,6 +589,8 @@ class WebSocketService: ObservableObject {
                     self.messages[lastIdx].thinking = (self.messages[lastIdx].thinking ?? "") + textMsg
                 }
                 self.streamingThinking = ""
+                self.currentThinkingLine = ""
+                self.lastNonEmptyThinkingLine = ""
                 self.sdkEvents.append(thinkEvent)
             } else {
                 modifySessionState(projectId: pid, sessionId: targetSid) {
@@ -877,6 +900,7 @@ class WebSocketService: ObservableObject {
                 self.messages.append(resultMsg)
                 self.streamingText = ""
                 self.streamingThinking = ""
+                self.resetLineTrackers()
             } else if !targetSid.isEmpty {
                 modifySessionState(projectId: pid, sessionId: targetSid) { $0.messages.append(resultMsg) }
             }
@@ -1549,13 +1573,58 @@ class WebSocketService: ObservableObject {
         return nil
     }
 
+    /// Update incremental line trackers on each stream_delta — O(delta.length), not O(accumulated).
+    private func updateLineTrackers(delta: String, isThinking: Bool) {
+        // Only track whichever buffer getLastLineSnippet will use:
+        // text takes priority; thinking is used only when text is empty.
+        let isActive = isThinking ? streamingText.isEmpty : true
+        guard isActive else { return }
+
+        var current = isThinking ? currentThinkingLine : currentTextLine
+        var lastNonEmpty = isThinking ? lastNonEmptyThinkingLine : lastNonEmptyTextLine
+
+        if delta.contains("\n") {
+            let parts = delta.components(separatedBy: "\n")
+            for (i, part) in parts.enumerated() {
+                if i == 0 {
+                    // First segment completes the current partial line
+                    current += part
+                    if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+                        lastNonEmpty = current
+                    }
+                } else {
+                    // Subsequent segments start fresh lines
+                    current = part
+                }
+            }
+        } else {
+            current += delta
+        }
+
+        if isThinking {
+            currentThinkingLine = current
+            lastNonEmptyThinkingLine = lastNonEmpty
+        } else {
+            currentTextLine = current
+            lastNonEmptyTextLine = lastNonEmpty
+        }
+    }
+
+    private func resetLineTrackers() {
+        currentTextLine = ""
+        lastNonEmptyTextLine = ""
+        currentThinkingLine = ""
+        lastNonEmptyThinkingLine = ""
+    }
+
+    /// O(1) — reads from incremental trackers, not from the full accumulated string.
     private func getLastLineSnippet() -> String? {
-        let text = streamingText.isEmpty ? streamingThinking : streamingText
-        guard !text.isEmpty else { return nil }
-        let lastLine = text.components(separatedBy: .newlines)
-            .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? ""
-        let trimmed = lastLine.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return nil }
+        let (current, lastNonEmpty) = streamingText.isEmpty
+            ? (currentThinkingLine, lastNonEmptyThinkingLine)
+            : (currentTextLine, lastNonEmptyTextLine)
+        let candidate = current.trimmingCharacters(in: .whitespaces).isEmpty ? lastNonEmpty : current
+        let trimmed = candidate.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
         return trimmed.count > 60 ? String(trimmed.prefix(57)) + "..." : trimmed
     }
 

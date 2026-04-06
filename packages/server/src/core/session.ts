@@ -262,7 +262,11 @@ export class SessionManager {
           }
         }
 
-        if (text) {
+        // Skip SDK-injected system messages (task notifications, etc.) that
+        // are not real user input — they appear as user-role messages in the
+        // JSONL but should never be displayed in the chat UI.
+        const isSystemInjected = /^\s*<(task-notification|system-reminder)\b/.test(text)
+        if (text && !isSystemInjected) {
           messages.push({
             id: sdkMsg.uuid || `msg-${messages.length}`,
             role: 'user',

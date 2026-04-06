@@ -13,6 +13,7 @@
     "start": "bash scripts/start.sh",
     "stop": "bash scripts/stop.sh",
     "status": "bash scripts/status.sh",
+    "pm2": "bash scripts/pm2-start.sh",
     "build": "pnpm -r build",
     "cli": "npx tsx packages/cli/src/index.ts"
   },
