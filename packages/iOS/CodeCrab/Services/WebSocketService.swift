@@ -1020,12 +1020,19 @@ class WebSocketService: ObservableObject {
                     contextWindowUsed: json["contextWindowUsed"] as? Int ?? 0,
                     contextWindowMax: json["contextWindowMax"] as? Int ?? 0
                 )
-                self.sessionUsage = usage
                 ensureProjectState(pid)
-                projectStates[pid]!.sessionUsage = usage
-                // Also track at session level
-                if let sid = msgSessionId, !sid.isEmpty {
-                    modifySessionState(projectId: pid, sessionId: sid) { $0.usage = usage }
+                // Only update the displayed usage if this message belongs to the active session.
+                // Stale session_usage from a previous session (e.g. background tasks finishing
+                // after newChat()) must not repopulate the cleared display.
+                let usageSid = msgSessionId ?? ""
+                let isActiveSession = usageSid.isEmpty || usageSid == self.sessionId
+                if isActiveSession && !self.sessionId.isEmpty {
+                    self.sessionUsage = usage
+                    projectStates[pid]!.sessionUsage = usage
+                }
+                // Always track at session level
+                if !usageSid.isEmpty {
+                    modifySessionState(projectId: pid, sessionId: usageSid) { $0.usage = usage }
                 }
             }
         case "cron_task_completed":
