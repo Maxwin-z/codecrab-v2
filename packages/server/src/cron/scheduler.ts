@@ -35,6 +35,25 @@ export class CronScheduler {
     const jobs = this.store.loadJobs()
     let skipped = 0
     let cleaned = 0
+    let migrated = 0
+
+    // Migrate deprecated one-shot jobs that actually ran (old deleteAfterRun behavior)
+    // to 'completed' so they appear in history.
+    for (const job of jobs.values()) {
+      if (
+        job.status === 'deprecated' &&
+        job.lastRunAt !== null && job.lastRunAt !== undefined &&
+        job.deleteAfterRun === true &&
+        job.schedule.kind === 'at'
+      ) {
+        job.status = 'completed'
+        if (job.runCount === 0) job.runCount = 1
+        job.updatedAt = new Date().toISOString()
+        this.store.saveJob(job)
+        migrated++
+      }
+    }
+    if (migrated > 0) console.log(`[CronScheduler] Migrated ${migrated} deprecated→completed jobs`)
 
     for (const job of jobs.values()) {
       // Skip terminal / inactive states
@@ -171,9 +190,21 @@ export class CronScheduler {
       const startTime = Date.now()
 
       try {
+        const projectId = job.context.projectId!
+        const project = this.core.projects.get(projectId)
+        if (!project) throw new Error(`Project not found: ${projectId}`)
+
+        const sessionMeta = this.core.sessions.create(projectId, project, {
+          cronJobId: job.id,
+          cronJobName: job.name,
+          permissionMode: 'bypassPermissions',
+        })
+        const cronSessionId = `cron-${job.id}-${Date.now()}`
+        this.core.sessions.register(cronSessionId, sessionMeta)
+
         await this.core.submitTurn({
-          projectId: job.context.projectId!,
-          sessionId: job.context.sessionId || job.context.parentSessionId!,
+          projectId,
+          sessionId: cronSessionId,
           prompt: job.prompt,
           type: 'cron',
           metadata: {
@@ -199,10 +230,11 @@ export class CronScheduler {
         this.store.appendRun(job.id, run)
         console.log(`[CronScheduler] Job ${job.id} completed in ${durationMs}ms`)
 
-        if (job.deleteAfterRun && job.schedule.kind === 'at') {
-          console.log(`[CronScheduler] One-shot job complete, deleting: ${job.id}`)
-          this.store.deleteJob(job.id)
+        if (job.schedule.kind === 'at') {
+          // One-shot job completed — mark as completed so it appears in history
+          job.status = 'completed'
           this.cancel(job.id)
+          this.store.saveJob(job)
           return
         }
 

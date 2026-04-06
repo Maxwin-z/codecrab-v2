@@ -9,8 +9,8 @@ import type { CronJob } from '../../types/index.js'
 function createMockCore(): CoreEngine {
   const core = {
     submitTurn: vi.fn().mockResolvedValue('query-123'),
-    projects: { get: vi.fn(), getPath: vi.fn(), list: vi.fn() },
-    sessions: { getMeta: vi.fn() },
+    projects: { get: vi.fn().mockReturnValue({ id: 'proj-1', name: 'Test Project' }), getPath: vi.fn(), list: vi.fn() },
+    sessions: { getMeta: vi.fn(), create: vi.fn().mockReturnValue({}), register: vi.fn() },
     on: vi.fn(),
     emit: vi.fn(),
   }
@@ -123,7 +123,7 @@ describe('CronScheduler', () => {
       expect(core.submitTurn as any).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: 'proj-test',
-          sessionId: 'sess-test',
+          sessionId: expect.stringMatching(/^cron-/),
           prompt: 'Do the thing',
           type: 'cron',
         }),
@@ -167,7 +167,7 @@ describe('CronScheduler', () => {
       expect(runs.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('should auto-delete one-shot job when deleteAfterRun=true', async () => {
+    it('should mark one-shot at job as completed after execution', async () => {
       const runAt = new Date(Date.now() + 10_000).toISOString()
       const job = makeCronJob({
         schedule: { kind: 'at', at: runAt },
@@ -177,10 +177,10 @@ describe('CronScheduler', () => {
 
       await (scheduler as any).triggerJob(job)
 
-      // Job should be deprecated (soft-deleted)
+      // Job should be completed (visible in history)
       const store = (scheduler as any).store
       const stored = store.getJob(job.id)
-      expect(stored?.status).toBe('deprecated')
+      expect(stored?.status).toBe('completed')
     })
 
     it('should disable job when maxRuns reached', async () => {
