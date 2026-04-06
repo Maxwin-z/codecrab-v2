@@ -12,6 +12,9 @@ export class SessionManager {
   // In-memory cache: sdkSessionId -> SessionMeta
   private metas = new Map<string, SessionMeta>()
 
+  // Reverse lookup: tempId -> sdkSessionId (survives restart via meta.tempId field)
+  private tempIdIndex = new Map<string, string>()
+
   // Idle callbacks keyed by meta object — survives session ID remapping (pending → real SDK ID)
   private idleCallbacks = new Map<SessionMeta, Array<() => void>>()
 
@@ -45,6 +48,10 @@ export class SessionManager {
             if (meta.pendingQuestion) meta.pendingQuestion = null
             if (meta.pendingPermissionRequest) meta.pendingPermissionRequest = null
             this.metas.set(meta.sdkSessionId, meta)
+            // Rebuild reverse lookup for temp IDs (e.g. cron sessions)
+            if (meta.tempId) {
+              this.tempIdIndex.set(meta.tempId, meta.sdkSessionId)
+            }
           }
         } catch {
           // Skip corrupted files
@@ -86,8 +93,17 @@ export class SessionManager {
     this.metas.set(sdkSessionId, meta)
   }
 
+  /** Record a temp ID → real SDK ID alias (called when session_init remaps a cron/temp session) */
+  addTempIdAlias(tempId: string, sdkSessionId: string): void {
+    this.tempIdIndex.set(tempId, sdkSessionId)
+  }
+
   getMeta(sessionId: string): SessionMeta | null {
-    return this.metas.get(sessionId) ?? null
+    const direct = this.metas.get(sessionId)
+    if (direct) return direct
+    // Fall back to tempId index (handles cron/temp IDs after session remapping or server restart)
+    const realId = this.tempIdIndex.get(sessionId)
+    return realId ? (this.metas.get(realId) ?? null) : null
   }
 
   /** List all session metas from in-memory cache, optionally filtered by projectId */
@@ -164,7 +180,14 @@ export class SessionManager {
    * messages before any context-compression (compact) point.
    */
   async getHistory(sessionId: string, projectPath?: string): Promise<ChatMessage[]> {
-    const jsonlPath = this.resolveJsonlPath(sessionId, projectPath)
+    // If a meta exists with a different sdkSessionId (e.g. temp/cron ID → real SDK UUID),
+    // use the real sdkSessionId for the JSONL file lookup.
+    // Use getMeta() (not metas.get()) so tempIdIndex is checked after server restart.
+    const meta = this.getMeta(sessionId)
+    const resolvedId = (meta?.sdkSessionId && meta.sdkSessionId !== sessionId)
+      ? meta.sdkSessionId
+      : sessionId
+    const jsonlPath = this.resolveJsonlPath(resolvedId, projectPath)
     let raw: string
     try {
       raw = await readFile(jsonlPath, 'utf-8')

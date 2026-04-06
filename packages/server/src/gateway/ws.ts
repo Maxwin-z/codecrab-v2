@@ -273,6 +273,17 @@ function handleResumeSession(core: CoreEngine, broadcaster: Broadcaster, client:
     }
   }
 
+  // If the requested session ID was a temp/cron ID remapped to a real SDK UUID,
+  // notify this client directly so it can update its URL/state.
+  if (meta && meta.sdkSessionId && meta.sdkSessionId !== sessionId) {
+    broadcaster.send(client, {
+      type: 'session_id_resolved',
+      projectId,
+      tempSessionId: sessionId,
+      sessionId: meta.sdkSessionId,
+    } as any)
+  }
+
   core.emit('session:resumed', { projectId, sessionId, providerId: meta?.providerId })
 }
 

@@ -178,7 +178,7 @@ export class TurnManager {
         model: resolvedModel,
         permissionMode: session.permissionMode,
         cwd: projectPath,
-        resume: session.sdkSessionId && !session.sdkSessionId.startsWith('pending-') && !session.sdkSessionId.startsWith('temp-') ? session.sdkSessionId : undefined,
+        resume: session.sdkSessionId && !session.sdkSessionId.startsWith('pending-') && !session.sdkSessionId.startsWith('temp-') && !session.sdkSessionId.startsWith('cron-') ? session.sdkSessionId : undefined,
         enabledMcps: params.enabledMcps,
         disabledSdkServers: params.disabledSdkServers,
         disabledSkills: params.disabledSkills,
@@ -351,8 +351,14 @@ export class TurnManager {
 
         // Only migrate if the session ID actually changed (new session, not resume)
         if (prevSessionId !== newSessionId) {
+          // Persist the original temp/cron ID so it can be looked up after restart
+          const meta = this.sessions.getMeta(prevSessionId)!
+          if (!meta.tempId) {
+            meta.tempId = prevSessionId
+            this.sessions.addTempIdAlias(prevSessionId, newSessionId)
+          }
           // Register the session with the SDK session ID
-          this.sessions.register(newSessionId, this.sessions.getMeta(prevSessionId)!)
+          this.sessions.register(newSessionId, meta)
           // Notify clients so they can map temp/pending ID → real SDK ID
           this.core.emit('session:id_resolved', {
             projectId: ctx.projectId,
