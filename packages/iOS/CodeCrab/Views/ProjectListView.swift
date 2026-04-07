@@ -11,6 +11,7 @@ struct ProjectListView: View {
     @State private var editingProject: Project?
     @State private var agentToEditNameAvatar: Agent?
     @State private var showCopiedToast = false
+    @State private var projectLatestSessionTime: [String: Double] = [:]
 
     private var selectedProjectId: String? {
         if case .project(let p) = selection { return p.id }
@@ -32,11 +33,12 @@ struct ProjectListView: View {
 
     private func lastActiveTime(for project: Project) -> Double {
         let restTime = project.lastActivityAt ?? project.updatedAt
+        let sessionTime = projectLatestSessionTime[project.id] ?? 0
         if let status = wsService.projectStatuses.first(where: { $0.projectId == project.id }),
            let lastMod = status.lastModified {
-            return max(lastMod, restTime)
+            return max(lastMod, restTime, sessionTime)
         }
-        return restTime
+        return max(restTime, sessionTime)
     }
 
     var body: some View {
@@ -123,7 +125,8 @@ struct ProjectListView: View {
                         ProjectCard(
                             project: project,
                             isSelected: selectedProjectId == project.id,
-                            cronJobs: cronJobsByProject[project.id] ?? []
+                            cronJobs: cronJobsByProject[project.id] ?? [],
+                            latestSessionTime: projectLatestSessionTime[project.id]
                         )
                         .tag(DetailDestination.project(project))
                         .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
@@ -225,11 +228,12 @@ struct ProjectListView: View {
     private func fetchAll() async {
         isLoading = true
         cardRefreshID = UUID()
-        async let projectsTask: () = fetchProjects()
         async let agentsTask: () = fetchAgents()
         async let cronTask: () = fetchCronJobs()
         async let threadsTask: () = fetchThreads()
-        _ = await (projectsTask, agentsTask, cronTask, threadsTask)
+        await fetchProjects()
+        async let sessionTimesTask: () = fetchSessionTimes()
+        _ = await (agentsTask, cronTask, threadsTask, sessionTimesTask)
         isLoading = false
     }
 
@@ -239,6 +243,32 @@ struct ProjectListView: View {
             self.projects = fetched.filter { !$0.id.hasPrefix("__") }
         } catch {
             print("Failed to fetch projects: \(error)")
+        }
+    }
+
+    private func fetchSessionTimes() async {
+        let snapshot = projects
+        await withTaskGroup(of: (String, Double?).self) { group in
+            for project in snapshot {
+                group.addTask {
+                    do {
+                        let sessions: [SessionInfo] = try await APIClient.shared.fetch(
+                            path: "/api/sessions?projectId=\(project.id)"
+                        )
+                        let maxTime = sessions.map { $0.lastModified }.max()
+                        return (project.id, maxTime)
+                    } catch {
+                        return (project.id, nil)
+                    }
+                }
+            }
+            var times: [String: Double] = [:]
+            for await (projectId, time) in group {
+                if let time = time {
+                    times[projectId] = time
+                }
+            }
+            projectLatestSessionTime = times
         }
     }
 
@@ -337,6 +367,7 @@ struct ProjectCard: View {
     let project: Project
     let isSelected: Bool
     var cronJobs: [CronJob] = []
+    var latestSessionTime: Double? = nil
     @EnvironmentObject var wsService: WebSocketService
 
     var body: some View {
@@ -385,11 +416,12 @@ struct ProjectCard: View {
 
     private var lastActiveTime: Double {
         let restTime = project.lastActivityAt ?? project.updatedAt
+        let sessionTime = latestSessionTime ?? 0
         if let status = wsService.projectStatuses.first(where: { $0.projectId == project.id }),
            let lastMod = status.lastModified {
-            return max(lastMod, restTime)
+            return max(lastMod, restTime, sessionTime)
         }
-        return restTime
+        return max(restTime, sessionTime)
     }
 
     @ViewBuilder
@@ -491,6 +523,9 @@ struct ProjectCard: View {
 struct AgentCard: View {
     let agent: Agent
     let isSelected: Bool
+    @EnvironmentObject var wsService: WebSocketService
+
+    private var internalProjectId: String { "__agent-\(agent.id)" }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -510,6 +545,7 @@ struct AgentCard: View {
             }
 
             Spacer()
+            indicator
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -519,6 +555,17 @@ struct AgentCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         )
+    }
+
+    @ViewBuilder
+    var indicator: some View {
+        if wsService.runningProjectIds.contains(internalProjectId) {
+            Circle().fill(Color.orange).frame(width: 8, height: 8)
+        } else if let status = wsService.projectStatuses.first(where: { $0.projectId == internalProjectId }),
+                  let lastMod = status.lastModified,
+                  Date().timeIntervalSince1970 * 1000 - lastMod < 600_000 {
+            Circle().fill(Color.green).frame(width: 8, height: 8)
+        }
     }
 }
 
