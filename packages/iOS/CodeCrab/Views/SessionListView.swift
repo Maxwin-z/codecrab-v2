@@ -16,6 +16,7 @@ struct SessionListView: View {
     @State private var isLoading = false
     @State private var now = Date()
     @State private var providerNames: [String: String] = [:]
+    @State private var showFileBrowser = false
 
     let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -83,11 +84,20 @@ struct SessionListView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: ChatRoute(project: project, sessionId: nil)) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 16))
+                HStack(spacing: 4) {
+                    Button(action: { showFileBrowser = true }) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 16))
+                    }
+                    NavigationLink(value: ChatRoute(project: project, sessionId: nil)) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 16))
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $showFileBrowser) {
+            FileBrowserView(projectPath: project.path)
         }
         .refreshable {
             await fetchSessions()

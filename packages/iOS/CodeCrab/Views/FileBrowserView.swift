@@ -327,6 +327,11 @@ struct FileBrowserView: View {
             }) {
                 Label("Copy path", systemImage: "doc.on.doc")
             }
+            Button(action: {
+                openInComputer(path: item.path)
+            }) {
+                Label("Open in computer", systemImage: "desktopcomputer")
+            }
         }
     }
 
@@ -399,6 +404,17 @@ struct FileBrowserView: View {
         if targetPath != currentPath {
             navigationStack.append(currentPath)
             navigate(to: targetPath)
+        }
+    }
+
+    private func openInComputer(path: String) {
+        Task {
+            struct OpenReq: Encodable { let path: String }
+            try? await APIClient.shared.request(
+                path: "/api/files/open",
+                method: "POST",
+                body: OpenReq(path: path)
+            )
         }
     }
 }
