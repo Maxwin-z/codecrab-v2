@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AgentAvatar } from '@/components/AgentAvatar'
 import { useNavigate, useSearchParams, useLocation } from 'react-router'
 import { useWs } from '@/hooks/WebSocketContext'
@@ -14,7 +14,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { Input } from '@/components/ui/input'
 import { CreateAgentDialog } from '@/components/CreateAgentDialog'
 import { EditAgentDialog } from '@/components/EditAgentDialog'
-import { useCronSummary } from '@/hooks/useCron'
+import { useCronSummary, type CronJobItem } from '@/hooks/useCron'
 
 interface Project {
   id: string
@@ -31,6 +31,10 @@ interface Agent {
 }
 
 const RECENTLY_ACTIVE_MS = 10 * 60 * 1000
+
+function shortenPath(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+/, '~')
+}
 
 function formatRelativeTime(ms: number): string {
   const diff = Date.now() - ms
@@ -94,6 +98,7 @@ export function AppSidebar({
   const [projects, setProjects] = useState<Project[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [restThreads, setRestThreads] = useState<ThreadInfo[]>([])
+  const [cronJobs, setCronJobs] = useState<CronJobItem[]>([])
   const [filter, setFilter] = useState('')
   const [projectsCollapsed, setProjectsCollapsed] = useState(false)
   const [agentsCollapsed, setAgentsCollapsed] = useState(false)
@@ -146,10 +151,11 @@ export function AppSidebar({
 
   const loadData = useCallback(async () => {
     try {
-      const [projectsRes, agentsRes, threads] = await Promise.all([
+      const [projectsRes, agentsRes, threads, cronRes] = await Promise.all([
         authFetch('/api/projects', {}, onUnauthorized),
         authFetch('/api/agents', {}, onUnauthorized),
         fetchThreads(undefined, onUnauthorized),
+        authFetch('/api/cron/jobs', {}, onUnauthorized),
       ])
       if (projectsRes.ok) {
         const all: Project[] = await projectsRes.json()
@@ -159,6 +165,9 @@ export function AppSidebar({
       if (agentsRes.ok) {
         setAgents(await agentsRes.json())
       }
+      if (cronRes.ok) {
+        setCronJobs(await cronRes.json())
+      }
       setRestThreads(threads)
     } catch { /* ignore */ }
   }, [onUnauthorized])
@@ -167,6 +176,18 @@ export function AppSidebar({
   useEffect(() => {
     loadData()
   }, [loadData, location.pathname])
+
+  const cronJobsByProject = useMemo(() => {
+    const map = new Map<string, CronJobItem[]>()
+    for (const job of cronJobs) {
+      if (job.context.projectId) {
+        const list = map.get(job.context.projectId) ?? []
+        list.push(job)
+        map.set(job.context.projectId, list)
+      }
+    }
+    return map
+  }, [cronJobs])
 
   const getLastModified = (id: string) =>
     projectStatuses.find(s => s.projectId === id)?.lastModified
@@ -394,6 +415,11 @@ export function AppSidebar({
                   const status = getProjectStatus(p.id)
                   const isActive = currentProjectId === p.id
                   const lastModified = getLastModified(p.id)
+                  const projectCronJobs = cronJobsByProject.get(p.id) ?? []
+                  const activeCronJobs = projectCronJobs.filter(j => j.status === 'pending' || j.status === 'running')
+                  const nextCronJob = activeCronJobs
+                    .filter(j => j.nextRunAt)
+                    .sort((a, b) => new Date(a.nextRunAt!).getTime() - new Date(b.nextRunAt!).getTime())[0]
                   return (
                     <button
                       key={p.id}
@@ -414,6 +440,9 @@ export function AppSidebar({
                           <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
                         ) : null}
                       </div>
+                      <div className="pl-6 w-full min-w-0">
+                        <span className="text-xs text-muted-foreground/50 truncate block">{shortenPath(p.path)}</span>
+                      </div>
                       {status === 'processing' && activeHeartbeats[p.id] ? (
                         <ActivityRow heartbeat={activeHeartbeats[p.id]} />
                       ) : lastModified ? (
@@ -421,6 +450,22 @@ export function AppSidebar({
                           <span className="text-xs text-muted-foreground/60">{formatRelativeTime(lastModified)}</span>
                         </div>
                       ) : null}
+                      {activeCronJobs.length > 0 && (
+                        <div className="flex items-center gap-1 pl-6 w-full min-w-0">
+                          <Clock className="h-3 w-3 shrink-0 text-purple-500" />
+                          <span className="text-xs font-medium text-purple-500">{activeCronJobs.length}</span>
+                          {nextCronJob && (
+                            <>
+                              <span className="text-xs text-muted-foreground/60">·</span>
+                              <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+                                {new Date(nextCronJob.nextRunAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <span className="text-xs text-muted-foreground/60">·</span>
+                              <span className="text-xs text-muted-foreground/60 truncate">{nextCronJob.name}</span>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </button>
                   )
                 })}
