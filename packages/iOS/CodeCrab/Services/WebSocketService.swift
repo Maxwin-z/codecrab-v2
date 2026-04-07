@@ -1408,6 +1408,29 @@ class WebSocketService: ObservableObject {
                 }.value
 
                 guard let (newMessages, synthesizedEvents) = result else { return }
+
+                // Pre-warm the file probe cache for all text events before updating the UI.
+                // Without this, every MessageModeTextView fires a concurrent HTTP probe request
+                // when the session renders, causing N simultaneous requests and visible lag
+                // for sessions with many messages (especially ones with lots of file paths).
+                let projectPath = self.cwd
+                if !projectPath.isEmpty {
+                    let textContents = synthesizedEvents.compactMap { event -> String? in
+                        guard event.type == "text",
+                              let data = event.data,
+                              case .string(let c) = data["content"] else { return nil }
+                        return c
+                    }
+                    let allDetected = textContents.flatMap { extractFilePaths(from: $0) }
+                    if !allDetected.isEmpty {
+                        let base = projectPath.hasSuffix("/") ? String(projectPath.dropLast()) : projectPath
+                        let resolved = Array(Set(allDetected.map { path in
+                            path.hasPrefix("/") ? path : base + "/" + path
+                        }))
+                        _ = await probeFilePaths(resolved)
+                    }
+                }
+
                 // Back on main actor: update @Published state.
                 if sid == self.sessionId {
                     self.messages = newMessages

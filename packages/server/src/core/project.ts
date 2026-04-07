@@ -85,6 +85,7 @@ export class ProjectManager {
       icon: p.icon,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
+      lastActivityAt: p.lastActivityAt,
     }))
     await writeFile(PROJECTS_FILE, JSON.stringify(projects, null, 2))
   }

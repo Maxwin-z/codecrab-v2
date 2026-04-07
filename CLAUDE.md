@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language
+
+All responses must be in **English or Chinese (Simplified) only**. Do not respond in any other language, even if the user writes in another language.
+
 ## Commands
 
 ```bash

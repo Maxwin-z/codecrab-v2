@@ -98,6 +98,8 @@ export interface SessionMeta {
   } | null
   cronJobId?: string
   cronJobName?: string
+  /** Original temp/cron session ID before SDK remapped to real UUID */
+  tempId?: string
   threadId?: string
   autoResumeCount?: number
   createdAt: number

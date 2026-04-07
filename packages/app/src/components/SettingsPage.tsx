@@ -166,8 +166,9 @@ export function SettingsPage({
         onUnauthorized?.()
         return
       }
+      if (!res.ok) return
       const data = await res.json()
-      setProviders(data.providers)
+      setProviders(data.providers ?? [])
       setDefaultProviderId(data.defaultProviderId)
     } catch {}
   }, [onUnauthorized])
