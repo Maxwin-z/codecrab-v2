@@ -105,6 +105,13 @@ export function SessionSidebar({
               )}
               onClick={() => onSelectSession(s.sessionId)}
             >
+              {s.cronJobName && (
+                <div className="flex items-center gap-1 mb-1">
+                  <span className="text-xs font-medium text-purple-500 bg-purple-500/10 px-1.5 py-0.5 rounded truncate max-w-full">
+                    {s.cronJobName}
+                  </span>
+                </div>
+              )}
               <div className="flex items-start justify-between gap-1">
                 <p className="text-sm font-medium truncate flex-1">
                   {s.summary || s.firstPrompt || 'Untitled session'}
@@ -122,9 +129,6 @@ export function SessionSidebar({
                 <span className="text-xs text-muted-foreground">{formatTime(s.lastModified)}</span>
                 {status === 'processing' && (
                   <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse ml-1" />
-                )}
-                {s.cronJobName && (
-                  <span className="text-xs text-muted-foreground ml-1">cron: {s.cronJobName}</span>
                 )}
                 {s.providerId && providerNames?.[s.providerId] && (
                   <span className="text-xs text-muted-foreground ml-auto truncate max-w-[80px]" title={providerNames[s.providerId]}>

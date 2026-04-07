@@ -174,15 +174,12 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if session.isCron {
-                Image(systemName: "clock.arrow.2.circlepath")
-                    .font(.system(size: 16))
-                    .foregroundColor(.purple)
-            }
-
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    if session.isCron {
+                if session.isCron {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.2.circlepath")
+                            .font(.system(size: 11))
+                            .foregroundColor(.purple)
                         Text(session.cronJobName ?? "Scheduled")
                             .font(.caption2)
                             .fontWeight(.semibold)
@@ -192,12 +189,12 @@ struct SessionRowView: View {
                             .background(Color.purple.opacity(0.12))
                             .cornerRadius(4)
                     }
-
-                    Text(session.summary.isEmpty ? (session.firstPrompt ?? "Untitled session") : session.summary)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .foregroundColor(.primary)
                 }
+
+                Text(session.summary.isEmpty ? (session.firstPrompt ?? "Untitled session") : session.summary)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
 
                 HStack {
                     Text(TimeAgo.format(from: session.lastModified, now: now))
