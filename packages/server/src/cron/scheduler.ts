@@ -169,6 +169,11 @@ export class CronScheduler {
     const maxRetries = CronScheduler.MAX_RETRIES
     const baseBackoffMs = CronScheduler.RETRY_BASE_MS
 
+    // Re-read the latest version from store to pick up any updates (e.g. prompt changes)
+    // made after this job was scheduled. The closure captures a stale reference.
+    const fresh = this.store.getJob(job.id)
+    if (fresh) job = fresh
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const runId = this.store.generateRunId()
       const isRetry = attempt > 0
