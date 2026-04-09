@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { AgentAvatar } from '@/components/AgentAvatar'
-import { Button } from '@/components/ui/button'
-import { Send, Square, ImagePlus, X } from 'lucide-react'
+import { ArrowUp, Square, Paperclip, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ImageAttachment } from '@codecrab/shared'
 
@@ -53,6 +52,19 @@ function getMentionQuery(text: string, cursorPos: number): { query: string; star
   return { query, startIndex }
 }
 
+async function processFiles(files: FileList | File[]) {
+  const results: (ImageAttachment & { preview: string })[] = []
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue
+    try {
+      const processed = await processImage(file)
+      const preview = URL.createObjectURL(file)
+      results.push({ ...processed, preview })
+    } catch { /* ignore */ }
+  }
+  return results
+}
+
 export function InputBar({
   isRunning,
   isAborting,
@@ -72,10 +84,12 @@ export function InputBar({
   const [images, setImages] = useState<(ImageAttachment & { preview: string })[]>([])
   const [mentionState, setMentionState] = useState<{ query: string; startIndex: number } | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mentionListRef = useRef<HTMLDivElement>(null)
   const isComposingRef = useRef(false)
+  const dragCounterRef = useRef(0)
 
   // Filter agents based on mention query
   const filteredAgents = mentionState
@@ -176,14 +190,8 @@ export function InputBar({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) continue
-      try {
-        const processed = await processImage(file)
-        const preview = URL.createObjectURL(file)
-        setImages(prev => [...prev, { ...processed, preview }])
-      } catch { /* ignore */ }
-    }
+    const processed = await processFiles(files)
+    setImages(prev => [...prev, ...processed])
     e.target.value = ''
   }
 
@@ -194,119 +202,167 @@ export function InputBar({
     })
   }
 
-  return (
-    <div className="border-t border-border bg-background px-4 py-3">
-      {/* Image previews */}
-      {images.length > 0 && (
-        <div className="flex gap-2 mb-2 flex-wrap">
-          {images.map((img, i) => (
-            <div key={i} className="relative group">
-              <img
-                src={img.preview}
-                alt={img.name}
-                className="h-16 w-16 object-cover rounded-md border border-border"
-              />
-              <button
-                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                onClick={() => removeImage(i)}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    if (!e.dataTransfer.types.includes('Files')) return
+    dragCounterRef.current++
+    setIsDragging(true)
+  }
 
-      <div className="flex items-end gap-2">
-        {/* Image upload */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 shrink-0"
-          onClick={() => fileInputRef.current?.click()}
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) setIsDragging(false)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragging(false)
+    const files = e.dataTransfer.files
+    const processed = await processFiles(files)
+    setImages(prev => [...prev, ...processed])
+  }
+
+  const canSend = !disabled && (text.trim().length > 0 || images.length > 0)
+
+  return (
+    <div className="bg-background px-4 py-3">
+      {/* Input container */}
+      <div
+        className={cn(
+          'relative rounded-xl border bg-muted/30 shadow-sm transition-colors',
+          isDragging ? 'border-primary bg-primary/5' : 'border-border',
+        )}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drag-and-drop overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 rounded-xl flex items-center justify-center z-10 pointer-events-none">
+            <span className="text-sm font-medium text-primary">Drop images here</span>
+          </div>
+        )}
+
+        {/* @mention autocomplete dropdown */}
+        {mentionState && filteredAgents.length > 0 && (
+          <div
+            ref={mentionListRef}
+            className="absolute bottom-full left-0 mb-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
+          >
+            {filteredAgents.map((agent, i) => (
+              <button
+                key={agent.id}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer',
+                  i === mentionIndex
+                    ? 'bg-accent text-accent-foreground'
+                    : 'hover:bg-accent/50',
+                )}
+                onMouseDown={e => {
+                  e.preventDefault() // prevent textarea blur
+                  insertMention(agent)
+                }}
+                onMouseEnter={() => setMentionIndex(i)}
+              >
+                <AgentAvatar value={agent.emoji || '🤖'} size="sm" />
+                <span className="truncate">@{agent.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Image previews */}
+        {images.length > 0 && (
+          <div className="flex gap-2 px-3 pt-3 flex-wrap">
+            {images.map((img, i) => (
+              <div key={i} className="relative group">
+                <img
+                  src={img.preview}
+                  alt={img.name}
+                  className="h-14 w-14 object-cover rounded-lg border border-border"
+                />
+                <button
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  onClick={() => removeImage(i)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Textarea */}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleTextChange}
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={() => { isComposingRef.current = true }}
+          onCompositionEnd={() => { isComposingRef.current = false }}
+          placeholder="Send a message... (type @ to mention an agent)"
           disabled={disabled}
-        >
-          <ImagePlus className="h-4 w-4" />
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
+          rows={1}
+          className={cn(
+            'w-full resize-none bg-transparent px-3 pt-3 pb-2 text-sm',
+            'placeholder:text-muted-foreground focus:outline-none',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            'max-h-[150px]',
+            isDragging && 'opacity-20',
+          )}
         />
 
-        {/* Text input with mention dropdown */}
-        <div className="flex-1 relative">
-          {/* @mention autocomplete dropdown */}
-          {mentionState && filteredAgents.length > 0 && (
-            <div
-              ref={mentionListRef}
-              className="absolute bottom-full left-0 mb-1 w-full max-h-48 overflow-y-auto rounded-lg border border-border bg-popover shadow-md z-10"
-            >
-              {filteredAgents.map((agent, i) => (
-                <button
-                  key={agent.id}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors cursor-pointer',
-                    i === mentionIndex
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-accent/50',
-                  )}
-                  onMouseDown={e => {
-                    e.preventDefault() // prevent textarea blur
-                    insertMention(agent)
-                  }}
-                  onMouseEnter={() => setMentionIndex(i)}
-                >
-                  <AgentAvatar value={agent.emoji || '🤖'} size="sm" />
-                  <span className="truncate">@{agent.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleTextChange}
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => { isComposingRef.current = true }}
-            onCompositionEnd={() => { isComposingRef.current = false }}
-            placeholder="Send a message... (type @ to mention an agent)"
+        {/* Bottom toolbar */}
+        <div className="flex items-center justify-between px-2 pb-2">
+          {/* Left: image upload */}
+          <button
+            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
-            rows={1}
-            className={cn(
-              'w-full resize-none bg-muted/50 rounded-lg px-3 py-2 text-sm',
-              'placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'max-h-[150px]',
-            )}
-          />
-        </div>
-
-        {/* Send / Abort */}
-        {isRunning && (
-          <Button
-            variant="destructive"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            onClick={onAbort}
-            disabled={isAborting}
           >
-            <Square className="h-4 w-4" />
-          </Button>
-        )}
-        <Button
-          size="icon"
-          className="h-9 w-9 shrink-0"
-          onClick={handleSend}
-          disabled={disabled || (!text.trim() && images.length === 0)}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+            <Paperclip className="h-4 w-4" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+          />
+
+          {/* Right: stop / send */}
+          {isRunning ? (
+            <button
+              className="h-8 w-8 flex items-center justify-center rounded-full bg-foreground text-background hover:opacity-75 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              onClick={onAbort}
+              disabled={isAborting}
+            >
+              <Square className="h-3 w-3" fill="currentColor" strokeWidth={0} />
+            </button>
+          ) : (
+            <button
+              className={cn(
+                'h-8 w-8 flex items-center justify-center rounded-full transition-all',
+                canSend
+                  ? 'bg-foreground text-background hover:opacity-75 cursor-pointer'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed',
+              )}
+              onClick={handleSend}
+              disabled={!canSend}
+            >
+              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
