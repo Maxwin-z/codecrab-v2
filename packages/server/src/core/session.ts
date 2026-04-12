@@ -324,7 +324,7 @@ export class SessionManager {
 
   /** Update session metadata */
   update(sessionId: string, partial: Partial<SessionMeta>): void {
-    const meta = this.metas.get(sessionId)
+    const meta = this.getMeta(sessionId)
     if (!meta) return
     Object.assign(meta, partial)
   }

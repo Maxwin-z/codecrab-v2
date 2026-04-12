@@ -288,14 +288,16 @@ export class Broadcaster {
     })
 
     this.core.on('session:resumed', (e) => {
+      const resumedMeta = this.core.sessions.getMeta(e.sessionId)
       this.broadcastToProject(e.projectId, {
         type: 'session_resumed',
         projectId: e.projectId,
         sessionId: e.sessionId,
         providerId: e.providerId,
+        permissionMode: resumedMeta?.permissionMode,
       })
       // Send cached session usage so the client has context window info immediately
-      const session = this.core.sessions.getMeta(e.sessionId)
+      const session = resumedMeta
       tsLog(`${C.dim}[broadcast]${C.reset} session:resumed  session=${e.sessionId.slice(0, 8)}  hasMeta=${!!session}  queryCount=${session?.usage.queryCount ?? 0}  ctxUsed=${session?.usage.contextWindowUsed ?? 0}  ctxMax=${session?.usage.contextWindowMax ?? 0}`)
       if (session && session.usage.queryCount > 0) {
         this.broadcastToProject(e.projectId, {

@@ -227,9 +227,10 @@ const handlers: Record<string, HandlerFn> = {
     const hasRunning = Object.values(project?.sessions || {}).some(s => s.status === 'processing')
     if (hasRunning) return
     store.setViewingSession(projectId, sessionId)
-    if (msg.providerId) {
+    if (msg.providerId || msg.permissionMode) {
       store.updateSession(projectId, sessionId, s => {
-        s.providerId = msg.providerId
+        if (msg.providerId) s.providerId = msg.providerId
+        if (msg.permissionMode) s.permissionMode = msg.permissionMode
       })
     }
   },

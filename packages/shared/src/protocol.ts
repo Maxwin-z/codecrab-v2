@@ -280,6 +280,7 @@ export interface ErrorMessage extends ServerProjectContext {
 export interface SessionResumedMessage extends ServerProjectContext {
   type: 'session_resumed'
   providerId?: string
+  permissionMode?: string
 }
 
 export interface SessionCreatedMessage extends ServerProjectContext {
