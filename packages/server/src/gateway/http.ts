@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
@@ -968,12 +969,31 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
         mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/x-msvideo',
         mkv: 'video/x-matroska', webm: 'video/webm',
         mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4',
+        aac: 'audio/aac', flac: 'audio/flac', aiff: 'audio/aiff', caf: 'audio/x-caf', m4r: 'audio/mp4',
       }
       const contentType = mimeTypes[ext] || 'application/octet-stream'
+      const fileSize = stat.size
+      const rangeHeader = req.headers.range
+
       res.setHeader('Content-Type', contentType)
-      res.setHeader('Content-Length', stat.size)
-      const data = await fs.readFile(resolved)
-      res.send(data)
+      res.setHeader('Accept-Ranges', 'bytes')
+
+      if (rangeHeader) {
+        const parts = rangeHeader.replace(/bytes=/, '').split('-')
+        const start = parseInt(parts[0], 10)
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+        if (start >= fileSize || end >= fileSize) {
+          res.status(416).setHeader('Content-Range', `bytes */${fileSize}`).end()
+          return
+        }
+        res.status(206)
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+        res.setHeader('Content-Length', end - start + 1)
+        createReadStream(resolved, { start, end }).pipe(res)
+      } else {
+        res.setHeader('Content-Length', fileSize)
+        createReadStream(resolved).pipe(res)
+      }
     } catch (err) {
       res.status(400).json({ error: (err as Error).message })
     }

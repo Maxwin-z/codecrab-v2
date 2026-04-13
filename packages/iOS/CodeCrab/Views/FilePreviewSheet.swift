@@ -1,6 +1,7 @@
 import SwiftUI
 import Textual
 import AVKit
+import MediaPlayer
 
 // MARK: - FilePreviewSheet (sheet wrapper with NavigationStack)
 
@@ -52,7 +53,14 @@ private struct FilePreviewPageView: View {
     @State private var isPreparingShare = false
     @State private var imageData: UIImage? = nil
     @State private var videoPlayer: AVPlayer? = nil
-    @State private var localVideoURL: URL? = nil
+    @StateObject private var audioController: AudioPlayerController
+
+    init(filePath: String, fileName: String, navigationPath: Binding<NavigationPath>) {
+        self.filePath = filePath
+        self.fileName = fileName
+        self._navigationPath = navigationPath
+        self._audioController = StateObject(wrappedValue: AudioPlayerController(fileName: fileName))
+    }
 
     private var ext: String {
         (fileName as NSString).pathExtension.lowercased()
@@ -64,9 +72,11 @@ private struct FilePreviewPageView: View {
 
     private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"]
     private static let videoExtensions: Set<String> = ["mp4", "mov", "avi", "mkv", "webm"]
+    private static let audioExtensions: Set<String> = ["mp3", "wav", "m4a", "aac", "flac", "aiff", "caf", "m4r"]
 
     private var isImage: Bool { Self.imageExtensions.contains(ext) }
     private var isVideo: Bool { Self.videoExtensions.contains(ext) }
+    private var isAudio: Bool { Self.audioExtensions.contains(ext) }
 
     private var languageLabel: String {
         switch ext {
@@ -128,6 +138,8 @@ private struct FilePreviewPageView: View {
                     imagePreviewView(fc)
                 } else if isVideo {
                     videoPreviewView(fc)
+                } else if isAudio {
+                    audioPreviewView(fc)
                 } else if fc.binary {
                     binaryFileView(fc)
                 } else if fc.truncated == true {
@@ -208,7 +220,14 @@ private struct FilePreviewPageView: View {
                         }) {
                             Label("Share video", systemImage: "square.and.arrow.up")
                         }
-                        .disabled(isPreparingShare || localVideoURL == nil)
+                        .disabled(isPreparingShare || videoPlayer == nil)
+                    } else if isAudio {
+                        Button(action: {
+                            Task { await shareAudio() }
+                        }) {
+                            Label("Share audio", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(isPreparingShare)
                     } else {
                         Button(action: {
                             Task { await prepareAndShare(asPDF: false) }
@@ -224,6 +243,9 @@ private struct FilePreviewPageView: View {
         }
         .task {
             await loadFile()
+        }
+        .onDisappear {
+            if isAudio { audioController.cleanup() }
         }
         .sheet(isPresented: $showShareSheet) {
             if let url = shareURL {
@@ -368,7 +390,6 @@ private struct FilePreviewPageView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onDisappear {
                     player.pause()
-                    cleanupLocalVideo()
                 }
         } else {
             Spacer()
@@ -392,6 +413,8 @@ private struct FilePreviewPageView: View {
                 await loadImageData(urlPath: urlPath)
             } else if isVideo {
                 await loadVideoPlayer(urlPath: urlPath)
+            } else if isAudio {
+                await loadAudioPlayer(urlPath: urlPath)
             }
         } catch {
             self.error = error.localizedDescription
@@ -408,25 +431,47 @@ private struct FilePreviewPageView: View {
         }
     }
 
-    private func loadVideoPlayer(urlPath: String) async {
-        do {
-            let data = try await APIClient.shared.fetchData(path: "/api/files/raw?path=\(urlPath)")
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(ext)
-            try data.write(to: tempURL)
-            localVideoURL = tempURL
-            videoPlayer = AVPlayer(url: tempURL)
-        } catch {
-            self.error = "Failed to load video"
-        }
+    // MARK: - Audio Preview
+
+    @ViewBuilder
+    private func audioPreviewView(_ fc: FileContent) -> some View {
+        AudioPlayerView(controller: audioController, fileSize: fc.size)
     }
 
-    private func cleanupLocalVideo() {
-        if let url = localVideoURL {
-            try? FileManager.default.removeItem(at: url)
-            localVideoURL = nil
+    private func loadAudioPlayer(urlPath: String) async {
+        guard let serverURL = UserDefaults.standard.string(forKey: "codecrab_server_url"),
+              let url = URL(string: "\(serverURL)/api/files/raw?path=\(urlPath)") else { return }
+        audioController.load(url: url, token: KeychainHelper.shared.getToken())
+    }
+
+    private func shareAudio() async {
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+        let urlPath = filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? filePath
+        do {
+            let data = try await APIClient.shared.fetchData(path: "/api/files/raw?path=\(urlPath)")
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+            if FileManager.default.fileExists(atPath: tempURL.path) {
+                try FileManager.default.removeItem(at: tempURL)
+            }
+            try data.write(to: tempURL)
+            shareURL = tempURL
+            showShareSheet = true
+        } catch { }
+    }
+
+    private func loadVideoPlayer(urlPath: String) async {
+        guard let serverURL = UserDefaults.standard.string(forKey: "codecrab_server_url"),
+              let url = URL(string: "\(serverURL)/api/files/raw?path=\(urlPath)") else {
+            self.error = "Failed to load video"
+            return
         }
+        var assetOptions: [String: Any] = [:]
+        if let token = KeychainHelper.shared.getToken() {
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": "Bearer \(token)"]
+        }
+        let asset = AVURLAsset(url: url, options: assetOptions.isEmpty ? nil : assetOptions)
+        videoPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
     }
 
     private func formatSize(_ bytes: Int) -> String {
@@ -452,18 +497,19 @@ private struct FilePreviewPageView: View {
             } catch {
                 // failed to write image
             }
-        } else if isVideo, let videoURL = localVideoURL {
-            // Copy to a file with the original name so the share sheet shows a meaningful filename
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        } else if isVideo {
+            let urlPath = filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? filePath
             do {
+                let data = try await APIClient.shared.fetchData(path: "/api/files/raw?path=\(urlPath)")
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
                 if FileManager.default.fileExists(atPath: tempURL.path) {
                     try FileManager.default.removeItem(at: tempURL)
                 }
-                try FileManager.default.copyItem(at: videoURL, to: tempURL)
+                try data.write(to: tempURL)
                 shareURL = tempURL
                 showShareSheet = true
             } catch {
-                // failed to copy video
+                // failed to download video for sharing
             }
         }
     }
