@@ -17,6 +17,9 @@ cd "$ROOT_DIR/packages/shared" && pnpm build
 echo "Building server..."
 cd "$ROOT_DIR/packages/server" && pnpm build
 
+echo "Building app..."
+cd "$ROOT_DIR/packages/app" && pnpm build
+
 cd "$ROOT_DIR"
 
 echo "Starting with pm2..."
@@ -42,10 +45,12 @@ echo "════════════════════════�
 awk '/Scan QR code/,0' "$LOG_DIR/server-out.log" 2>/dev/null | head -30
 echo "════════════════════════════════════════"
 echo ""
+echo "  App  → http://localhost:5740"
+[ -n "$LAN_IP" ] && echo "         http://$LAN_IP:5740"
 echo "  API  → http://localhost:42001"
 [ -n "$LAN_IP" ] && echo "         http://$LAN_IP:42001"
 echo ""
-echo "  Logs: .logs/server-out.log  |  .logs/frpc-out.log"
+echo "  Logs: .logs/server-out.log  |  .logs/app-out.log  |  .logs/frpc-out.log"
 echo "  pm2 status:  pm2 list"
 echo "  pm2 stop:    pm2 stop ecosystem.config.cjs"
 echo "  pm2 delete:  pm2 delete ecosystem.config.cjs"
