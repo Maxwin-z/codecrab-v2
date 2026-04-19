@@ -1,3 +1,4 @@
+import { existsSync, statSync } from 'node:fs'
 import type { CoreEngine } from './index.js'
 import type { SessionManager } from './session.js'
 import { QueryQueue } from './queue.js'
@@ -118,6 +119,19 @@ export class TurnManager {
         sessionId: params.sessionId,
         turnId,
         error: 'Project path not found',
+      })
+      return
+    }
+
+    // Verify directory exists on disk — a missing cwd causes spawn() to throw
+    // ENOENT, which the agent SDK misreports as "native binary not found".
+    if (!existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
+      tsLog(`${tag}   ${C.red}✗ project directory missing: ${projectPath}${C.reset}`)
+      this.core.emit('turn:error', {
+        projectId: params.projectId,
+        sessionId: params.sessionId,
+        turnId,
+        error: `Project directory no longer exists: ${projectPath}`,
       })
       return
     }
