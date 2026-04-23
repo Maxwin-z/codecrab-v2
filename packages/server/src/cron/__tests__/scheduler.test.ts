@@ -546,5 +546,36 @@ describe('CronScheduler', () => {
         vi.useRealTimers()
       }
     })
+
+    it('stops loop with status=completed when maxRuns reached', async () => {
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      const job = scheduler.create({
+        name: 'Max3', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+        maxRuns: 3,
+      })
+
+      // Drive 3 successful iterations
+      for (let i = 0; i < 3; i++) {
+        await new Promise((r) => setImmediate(r))
+        const calls = (core.submitTurn as any).mock.calls
+        const sessionId = calls[calls.length - 1][0].sessionId
+        turnCloseHandler!({ sessionId, isError: false, result: 'ok', projectId: 'proj-1', turnId: `t${i}`, type: 'cron', usage: {}, costUsd: 0, durationMs: 50 })
+        await new Promise((r) => setImmediate(r))
+      }
+
+      // Allow any extra setImmediate to fire (there should be none)
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+
+      expect(core.submitTurn).toHaveBeenCalledTimes(3)
+      const updated = scheduler.get(job.id)!
+      expect(updated.runCount).toBe(3)
+      expect(updated.status).toBe('completed')
+    })
   })
 })
