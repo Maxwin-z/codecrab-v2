@@ -402,6 +402,8 @@ export class CronScheduler {
           return null
         }
       }
+      case 'loop':
+        return null  // No deterministic next run; computed dynamically from turn:close
       default:
         return null
     }

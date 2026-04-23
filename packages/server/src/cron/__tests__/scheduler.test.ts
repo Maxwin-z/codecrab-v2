@@ -369,4 +369,11 @@ describe('CronScheduler', () => {
       expect(isValid).toBe(false)
     })
   })
+
+  describe('loop mode', () => {
+    it('calculateNextRun returns null for loop kind (no deterministic next run)', () => {
+      const result = CronScheduler.calculateNextRun({ kind: 'loop', cooldownMs: 1000 })
+      expect(result).toBeNull()
+    })
+  })
 })
