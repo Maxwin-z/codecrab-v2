@@ -486,6 +486,12 @@ describe('CronScheduler', () => {
       expect(updated.status).toBe('disabled')
     })
 
+    it('parseSchedule recognizes "loop" / "循环" when recurring', () => {
+      expect(CronScheduler.parseSchedule('loop', true).schedule).toEqual({ kind: 'loop' })
+      expect(CronScheduler.parseSchedule('loop forever', true).schedule).toEqual({ kind: 'loop' })
+      expect(CronScheduler.parseSchedule('循环执行', true).schedule).toEqual({ kind: 'loop' })
+    })
+
     it('does not throw and does not re-trigger when deleted while turn was running', async () => {
       let turnCloseHandler: ((data: any) => void) | null = null
       ;(core.on as any).mockImplementation((event: string, handler: any) => {

@@ -587,6 +587,11 @@ export class CronScheduler {
       return { schedule: { kind: 'cron', expr: when }, isValid: true }
     }
 
+    // "loop" / "循环" keyword for auto-loop schedules
+    if (recurring && /^\s*loop\b|循环/i.test(when)) {
+      return { schedule: { kind: 'loop' }, isValid: true }
+    }
+
     // "every X minutes/hours/days" pattern
     const everyMatch = when.match(/every\s+(\d+)\s+(minute|minutes|hour|hours|day|days)/i)
     if (everyMatch && recurring) {
