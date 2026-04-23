@@ -609,5 +609,33 @@ describe('CronScheduler', () => {
       expect(onCalls).toBe(5)
       expect(offCalls).toBe(5)  // exactly one off per on
     })
+
+    it('init() resumes a previously-pending loop job', async () => {
+      // Persist a loop job to the store, then build a fresh scheduler instance
+      const job = scheduler.create({
+        name: 'Restart', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+      })
+
+      // Simulate restart: destroy the current scheduler, instantiate a new one over same baseDir
+      scheduler.destroy()
+      const submitBefore = (core.submitTurn as any).mock.calls.length
+      const fresh = new CronScheduler(core, tmpDir)
+
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      fresh.init()
+      await new Promise((r) => setImmediate(r))
+
+      const submitAfter = (core.submitTurn as any).mock.calls.length
+      expect(submitAfter).toBeGreaterThan(submitBefore)
+      expect(turnCloseHandler).not.toBeNull()
+
+      // Cleanup so test doesn't dangle
+      fresh.destroy()
+    })
   })
 })
