@@ -577,5 +577,37 @@ describe('CronScheduler', () => {
       expect(updated.runCount).toBe(3)
       expect(updated.status).toBe('completed')
     })
+
+    it('removes turn:close listener after each iteration (no leak)', async () => {
+      let turnCloseHandler: ((data: any) => void) | null = null
+      let onCalls = 0
+      let offCalls = 0
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') {
+          turnCloseHandler = handler
+          onCalls++
+        }
+      })
+      ;(core.off as any).mockImplementation((event: string) => {
+        if (event === 'turn:close') offCalls++
+      })
+
+      scheduler.create({
+        name: 'NoLeak', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+        maxRuns: 5,
+      })
+
+      for (let i = 0; i < 5; i++) {
+        await new Promise((r) => setImmediate(r))
+        const calls = (core.submitTurn as any).mock.calls
+        const sessionId = calls[calls.length - 1][0].sessionId
+        turnCloseHandler!({ sessionId, isError: false, result: 'ok', projectId: 'proj-1', turnId: `t${i}`, type: 'cron', usage: {}, costUsd: 0, durationMs: 50 })
+        await new Promise((r) => setImmediate(r))
+      }
+
+      expect(onCalls).toBe(5)
+      expect(offCalls).toBe(5)  // exactly one off per on
+    })
   })
 })
