@@ -457,5 +457,60 @@ describe('CronScheduler', () => {
       const runs = scheduler.getHistory(job.id, 5)
       expect(runs[runs.length - 1].status).toBe('failed')
     })
+
+    it('does not re-trigger when paused while turn was running', async () => {
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      const job = scheduler.create({
+        name: 'Pause Mid', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+      })
+
+      await new Promise((r) => setImmediate(r))
+      const sessionId = (core.submitTurn as any).mock.calls[0][0].sessionId
+
+      // User pauses while the turn is in flight
+      scheduler.pause(job.id)
+
+      // Turn finishes successfully afterwards
+      turnCloseHandler!({ sessionId, isError: false, result: 'ok', projectId: 'proj-1', turnId: 't1', type: 'cron', usage: {}, costUsd: 0, durationMs: 100 })
+
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+
+      expect(core.submitTurn).toHaveBeenCalledTimes(1)  // No re-trigger
+      const updated = scheduler.get(job.id)!
+      expect(updated.status).toBe('disabled')
+    })
+
+    it('does not throw and does not re-trigger when deleted while turn was running', async () => {
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      const job = scheduler.create({
+        name: 'Delete Mid', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+      })
+
+      await new Promise((r) => setImmediate(r))
+      const sessionId = (core.submitTurn as any).mock.calls[0][0].sessionId
+
+      scheduler.delete(job.id)
+
+      // Should not throw
+      expect(() => {
+        turnCloseHandler!({ sessionId, isError: false, result: 'ok', projectId: 'proj-1', turnId: 't1', type: 'cron', usage: {}, costUsd: 0, durationMs: 100 })
+      }).not.toThrow()
+
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+
+      expect(core.submitTurn).toHaveBeenCalledTimes(1)
+    })
   })
 })
