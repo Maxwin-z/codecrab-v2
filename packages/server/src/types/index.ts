@@ -486,6 +486,7 @@ export type CronSchedule =
   | { kind: 'at'; at: string }           // ISO 8601 one-shot
   | { kind: 'every'; everyMs: number }   // millisecond interval
   | { kind: 'cron'; expr: string; tz?: string } // cron expression + optional timezone
+  | { kind: 'loop'; cooldownMs?: number } // re-trigger after each turn:close; cooldownMs gates next start
 
 export type CronJobStatus =
   | 'pending'    // waiting to execute
