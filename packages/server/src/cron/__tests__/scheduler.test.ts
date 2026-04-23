@@ -427,5 +427,35 @@ describe('CronScheduler', () => {
       //  before the test's resume callback fires).
       expect(['pending', 'running']).toContain(updated.status)
     })
+
+    it('stops loop and marks failed when turn:close has isError', async () => {
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      const job = scheduler.create({
+        name: 'Failing Loop',
+        schedule: { kind: 'loop' },
+        prompt: 'do work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' },
+        status: 'pending',
+      })
+
+      await new Promise((r) => setImmediate(r))
+      const sessionId = (core.submitTurn as any).mock.calls[0][0].sessionId
+
+      turnCloseHandler!({ sessionId, isError: true, result: 'agent crashed', projectId: 'proj-1', turnId: 't1', type: 'cron', usage: {}, costUsd: 0, durationMs: 100 })
+
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+
+      const updated = scheduler.get(job.id)!
+      expect(updated.status).toBe('failed')
+      expect(core.submitTurn).toHaveBeenCalledTimes(1)  // No re-trigger
+
+      const runs = scheduler.getHistory(job.id, 5)
+      expect(runs[runs.length - 1].status).toBe('failed')
+    })
   })
 })
