@@ -512,5 +512,39 @@ describe('CronScheduler', () => {
 
       expect(core.submitTurn).toHaveBeenCalledTimes(1)
     })
+
+    it('honors cooldownMs between iterations', async () => {
+      vi.useFakeTimers()
+      try {
+        let turnCloseHandler: ((data: any) => void) | null = null
+        ;(core.on as any).mockImplementation((event: string, handler: any) => {
+          if (event === 'turn:close') turnCloseHandler = handler
+        })
+
+        scheduler.create({
+          name: 'Cooldown', schedule: { kind: 'loop', cooldownMs: 5000 }, prompt: 'work',
+          context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+        })
+
+        // Drain microtasks so the first triggerJob runs
+        await vi.advanceTimersByTimeAsync(0)
+        expect(core.submitTurn).toHaveBeenCalledTimes(1)
+        const sessionId = (core.submitTurn as any).mock.calls[0][0].sessionId
+
+        // Turn closes successfully
+        turnCloseHandler!({ sessionId, isError: false, result: 'ok', projectId: 'proj-1', turnId: 't1', type: 'cron', usage: {}, costUsd: 0, durationMs: 100 })
+        await vi.advanceTimersByTimeAsync(0)
+
+        // Before cooldown: still 1 call
+        await vi.advanceTimersByTimeAsync(4000)
+        expect(core.submitTurn).toHaveBeenCalledTimes(1)
+
+        // After cooldown elapses: second call fires
+        await vi.advanceTimersByTimeAsync(1500)
+        expect(core.submitTurn).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 })
