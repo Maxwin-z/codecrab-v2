@@ -7,7 +7,7 @@ import { z } from 'zod/v4'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import type { CronScheduler } from '../../../cron/scheduler.js'
 import { CronScheduler as CronSchedulerClass } from '../../../cron/scheduler.js'
-import type { CronJob } from '../../../types/index.js'
+import type { CronJob, CronSchedule } from '../../../types/index.js'
 
 // ── Injected state ─────────────────────────────────────────────────────────
 
@@ -59,16 +59,19 @@ function formatSchedule(job: CronJob): string {
 export const tools = [
   tool(
     'cron_create',
-    `Create a scheduled task that will execute automatically at a specific time or on a recurring schedule.
+    `Create a scheduled task that will execute automatically at a specific time, on a recurring schedule, or in an auto-loop.
 
 Use this tool when the user asks to:
 - Set a reminder (e.g., "remind me in 5 minutes")
 - Schedule a task (e.g., "check email every hour")
 - Perform an action later (e.g., "tomorrow morning check the logs")
+- Run something in a loop until manually stopped (e.g., "keep monitoring X", "loop this until I say stop")
 
 The 'when' parameter accepts natural language like "1 minute later", "5 minutes from now", "tomorrow at 9am", "every hour", or cron expression "0 9 * * *".
 
-CRITICAL - The 'prompt' parameter is the instruction that will be executed when the scheduled time arrives. For reminders, the prompt MUST explicitly instruct the AI to send a push notification using the push_send tool.`,
+LOOP MODE: set 'loop: true' to create a self-restarting task. Each iteration starts a NEW session as soon as the previous turn closes. The loop stops when manually paused/deleted, when any turn returns an error (including user abort), or when 'maxRuns' is reached. Use 'cooldownMs' to throttle (e.g., wait 30000ms between iterations). When loop is true, 'when' / 'recurring' / 'cronExpression' are ignored.
+
+CRITICAL - The 'prompt' parameter is the instruction that will be executed. For reminders, the prompt MUST explicitly instruct the AI to send a push notification using the push_send tool.`,
     {
       name: z.string().describe('A descriptive name for this scheduled task'),
       when: z.string().describe(
@@ -80,6 +83,9 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
       timezone: z.string().optional().describe('Optional timezone for cron schedules (e.g., "Asia/Shanghai")'),
       description: z.string().optional().describe('Optional description or notes about this task'),
       deleteAfterRun: z.boolean().optional().describe('For one-time tasks, auto-delete after execution (default: true for one-shot)'),
+      loop: z.boolean().optional().describe('Auto-loop mode: re-trigger with a new session each time the previous turn closes. Stops on pause/delete, error, or maxRuns.'),
+      cooldownMs: z.number().optional().describe('Loop mode only: ms to wait between iterations (default 0 = immediate).'),
+      maxRuns: z.number().optional().describe('Optional cap on total runs (applies to loop / every / cron schedules).'),
       // Context fields — auto-injected via setCronQueryContext
       projectId: z.string().optional().describe('Project ID (auto-injected)'),
       sessionId: z.string().optional().describe('Session ID (auto-injected)'),
@@ -97,9 +103,17 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
         }
       }
 
-      const isRecurring = input.recurring || !!input.cronExpression
-      const scheduleInput = input.cronExpression || input.when
-      const parsed = CronSchedulerClass.parseSchedule(scheduleInput, isRecurring)
+      let parsed: { schedule: CronSchedule; isValid: boolean }
+      if (input.loop === true) {
+        parsed = {
+          schedule: { kind: 'loop', cooldownMs: input.cooldownMs },
+          isValid: true,
+        }
+      } else {
+        const isRecurring = input.recurring || !!input.cronExpression
+        const scheduleInput = input.cronExpression || input.when
+        parsed = CronSchedulerClass.parseSchedule(scheduleInput, isRecurring)
+      }
 
       if (!parsed.isValid) {
         return {
@@ -141,6 +155,7 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed when 
         context: { projectId, sessionId },
         status: 'pending',
         deleteAfterRun: input.deleteAfterRun ?? parsed.schedule.kind === 'at',
+        maxRuns: input.maxRuns,
       })
 
       const scheduleDesc = formatSchedule(job)
