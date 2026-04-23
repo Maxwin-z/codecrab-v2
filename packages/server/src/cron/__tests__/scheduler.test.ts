@@ -375,5 +375,14 @@ describe('CronScheduler', () => {
       const result = CronScheduler.calculateNextRun({ kind: 'loop', cooldownMs: 1000 })
       expect(result).toBeNull()
     })
+
+    it('schedule() triggers first iteration immediately for loop kind', async () => {
+      const triggerSpy = vi.spyOn(scheduler as any, 'triggerJob').mockImplementation(() => Promise.resolve())
+      const job = makeCronJob({ schedule: { kind: 'loop', cooldownMs: 1000 } })
+      const ok = scheduler.schedule(job)
+      expect(ok).toBe(true)
+      expect(triggerSpy).toHaveBeenCalledTimes(1)
+      expect(triggerSpy).toHaveBeenCalledWith(job)
+    })
   })
 })

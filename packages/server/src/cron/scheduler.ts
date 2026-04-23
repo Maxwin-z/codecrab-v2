@@ -107,6 +107,17 @@ export class CronScheduler {
     console.log(`[CronScheduler] Scheduling job: ${job.id} (${job.name})`)
     this.cancel(job.id)
 
+    // Loop kind has no deterministic nextRun — first iteration fires immediately,
+    // subsequent ones are scheduled from triggerJob after turn:close.
+    if (job.schedule.kind === 'loop') {
+      job.nextRunAt = undefined
+      this.store.saveJob(job)
+      // Reserve the map slot so cancel() during cooldown / first-await can find this job
+      this.scheduledTasks.set(job.id, { jobId: job.id })
+      void this.triggerJob(job)
+      return true
+    }
+
     const nextRun = CronScheduler.calculateNextRun(job.schedule)
     if (!nextRun) {
       console.warn(`[CronScheduler] Cannot calculate next run for job ${job.id}`)
