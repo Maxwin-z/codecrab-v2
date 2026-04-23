@@ -185,6 +185,10 @@ export class CronScheduler {
     const fresh = this.store.getJob(job.id)
     if (fresh) job = fresh
 
+    if (job.schedule.kind === 'loop') {
+      return this.triggerJobLoop(job)
+    }
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const runId = this.store.generateRunId()
       const isRetry = attempt > 0
@@ -293,6 +297,154 @@ export class CronScheduler {
         job.status = 'failed'
         this.store.saveJob(job)
       }
+    }
+  }
+
+  private async triggerJobLoop(job: CronJob): Promise<void> {
+    const runId = this.store.generateRunId()
+    console.log(`[CronScheduler] Triggering loop job: ${job.id} (${job.name}), runId=${runId}`)
+
+    job.status = 'running'
+    job.lastRunAt = new Date().toISOString()
+    this.store.saveJob(job)
+
+    this.store.appendRun(job.id, {
+      id: runId,
+      jobId: job.id,
+      startedAt: job.lastRunAt!,
+      status: 'running',
+    })
+
+    const startTime = Date.now()
+    const projectId = job.context.projectId!
+    const cronSessionId = `cron-${job.id}-${Date.now()}`
+
+    // Subscribe BEFORE submitTurn so we never miss the close event
+    let handler: ((data: any) => void) | null = null
+    const turnClosed = new Promise<{ isError: boolean; result?: string }>((resolve) => {
+      handler = (data: any) => {
+        if (data.sessionId === cronSessionId) {
+          resolve({ isError: data.isError, result: data.result })
+        }
+      }
+      this.core.on('turn:close', handler)
+    })
+
+    const cleanup = () => {
+      if (handler) this.core.off('turn:close', handler)
+      handler = null
+    }
+
+    try {
+      const project = this.core.projects.get(projectId)
+      if (!project) throw new Error(`Project not found: ${projectId}`)
+
+      const sessionMeta = this.core.sessions.create(projectId, project, {
+        cronJobId: job.id,
+        cronJobName: job.name,
+        permissionMode: 'bypassPermissions',
+      })
+      this.core.sessions.register(cronSessionId, sessionMeta)
+
+      await this.core.submitTurn({
+        projectId,
+        sessionId: cronSessionId,
+        prompt: job.prompt,
+        type: 'cron',
+        metadata: { cronJobId: job.id, cronJobName: job.name },
+      })
+    } catch (err) {
+      cleanup()
+      const durationMs = Date.now() - startTime
+      console.error(`[CronScheduler] Loop job ${job.id} submitTurn threw:`, err)
+      this.store.appendRun(job.id, {
+        id: runId,
+        jobId: job.id,
+        startedAt: job.lastRunAt!,
+        endedAt: new Date().toISOString(),
+        status: 'failed',
+        error: String(err),
+        durationMs,
+      })
+      job.status = 'failed'
+      this.store.saveJob(job)
+      this.cancel(job.id)
+      return
+    }
+
+    let outcome: { isError: boolean; result?: string }
+    try {
+      outcome = await turnClosed
+    } finally {
+      cleanup()
+    }
+
+    const durationMs = Date.now() - startTime
+
+    // Re-read after await — pause/delete may have flipped status
+    const latest = this.store.getJob(job.id)
+    if (!latest || latest.status === 'disabled' || latest.status === 'deprecated') {
+      this.store.appendRun(job.id, {
+        id: runId,
+        jobId: job.id,
+        startedAt: job.lastRunAt!,
+        endedAt: new Date().toISOString(),
+        status: 'cancelled',
+        durationMs,
+      })
+      console.log(`[CronScheduler] Loop job ${job.id} stopped (status=${latest?.status ?? 'gone'})`)
+      return
+    }
+    job = latest
+
+    if (outcome.isError) {
+      this.store.appendRun(job.id, {
+        id: runId,
+        jobId: job.id,
+        startedAt: job.lastRunAt!,
+        endedAt: new Date().toISOString(),
+        status: 'failed',
+        error: outcome.result ?? 'turn ended with isError',
+        durationMs,
+      })
+      job.status = 'failed'
+      this.store.saveJob(job)
+      this.cancel(job.id)
+      console.log(`[CronScheduler] Loop job ${job.id} stopped (turn errored)`)
+      return
+    }
+
+    // Success
+    job.runCount++
+    this.store.appendRun(job.id, {
+      id: runId,
+      jobId: job.id,
+      startedAt: job.lastRunAt!,
+      endedAt: new Date().toISOString(),
+      status: 'completed',
+      output: outcome.result ?? 'ok',
+      durationMs,
+    })
+
+    if (job.maxRuns && job.runCount >= job.maxRuns) {
+      job.status = 'completed'
+      this.store.saveJob(job)
+      this.cancel(job.id)
+      console.log(`[CronScheduler] Loop job ${job.id} reached maxRuns=${job.maxRuns}`)
+      return
+    }
+
+    job.status = 'pending'
+    this.store.saveJob(job)
+
+    // Schedule next iteration
+    const cooldown = job.schedule.kind === 'loop' ? job.schedule.cooldownMs ?? 0 : 0
+    if (cooldown > 0) {
+      this.scheduleTimeout(job, cooldown)
+    } else {
+      // setImmediate prevents synchronous recursion; tasks map slot stays reserved
+      this.scheduledTasks.set(job.id, { jobId: job.id })
+      setImmediate(() => void this.triggerJob(job))
     }
   }
 

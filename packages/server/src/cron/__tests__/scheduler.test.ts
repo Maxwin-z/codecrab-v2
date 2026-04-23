@@ -12,6 +12,7 @@ function createMockCore(): CoreEngine {
     projects: { get: vi.fn().mockReturnValue({ id: 'proj-1', name: 'Test Project' }), getPath: vi.fn(), list: vi.fn() },
     sessions: { getMeta: vi.fn(), create: vi.fn().mockReturnValue({}), register: vi.fn() },
     on: vi.fn(),
+    off: vi.fn(),
     emit: vi.fn(),
   }
   return core as any
@@ -383,6 +384,48 @@ describe('CronScheduler', () => {
       expect(ok).toBe(true)
       expect(triggerSpy).toHaveBeenCalledTimes(1)
       expect(triggerSpy).toHaveBeenCalledWith(job)
+    })
+
+    it('re-triggers after turn:close success', async () => {
+      // Capture the turn:close handler when triggerJob registers it
+      let turnCloseHandler: ((data: any) => void) | null = null
+      ;(core.on as any).mockImplementation((event: string, handler: any) => {
+        if (event === 'turn:close') turnCloseHandler = handler
+      })
+
+      const job = scheduler.create({
+        name: 'Loop Job',
+        schedule: { kind: 'loop' },
+        prompt: 'do work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' },
+        status: 'pending',
+      })
+
+      // Wait for first triggerJob to register the listener
+      await new Promise((r) => setImmediate(r))
+      expect(turnCloseHandler).not.toBeNull()
+      expect(core.submitTurn).toHaveBeenCalledTimes(1)
+
+      // Capture the sessionId triggerJob used (passed to submitTurn)
+      const firstCall = (core.submitTurn as any).mock.calls[0][0]
+      const sessionId = firstCall.sessionId
+      expect(sessionId).toMatch(/^cron-/)
+
+      // Fire turn:close success
+      turnCloseHandler!({ sessionId, isError: false, projectId: 'proj-1', turnId: 't1', type: 'cron', result: 'ok', usage: {}, costUsd: 0, durationMs: 100 })
+
+      // Allow setImmediate to fire next iteration
+      await new Promise((r) => setImmediate(r))
+      await new Promise((r) => setImmediate(r))
+
+      expect(core.submitTurn).toHaveBeenCalledTimes(2)
+      const updated = scheduler.get(job.id)!
+      expect(updated.runCount).toBe(1)
+      // iter2 has started by the second setImmediate tick, so status is 'running'
+      // (status would be 'pending' between iter1's saveJob and iter2's saveJob,
+      //  but the setImmediate FIFO ordering means iter2 runs to its first await
+      //  before the test's resume callback fires).
+      expect(['pending', 'running']).toContain(updated.status)
     })
   })
 })
