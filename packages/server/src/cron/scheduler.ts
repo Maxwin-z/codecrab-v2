@@ -534,9 +534,17 @@ export class CronScheduler {
     return this.schedule(job)
   }
 
-  trigger(jobId: string): void {
+  trigger(jobId: string): { accepted: boolean; reason?: string } {
     const job = this.store.getJob(jobId)
-    if (job) void this.triggerJob(job)
+    if (!job) return { accepted: false, reason: 'Job not found' }
+    if (job.schedule.kind === 'loop') {
+      return {
+        accepted: false,
+        reason: 'Loop jobs auto-trigger; use cron_pause + cron_resume to restart immediately, skipping any cooldown.',
+      }
+    }
+    void this.triggerJob(job)
+    return { accepted: true }
   }
 
   getHistory(jobId: string, limit = 50): CronJobRun[] {

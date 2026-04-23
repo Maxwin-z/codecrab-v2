@@ -501,7 +501,13 @@ ${
         }
       }
 
-      scheduler.trigger(input.jobId)
+      const result = scheduler.trigger(input.jobId)
+      if (!result.accepted) {
+        return {
+          content: [{ type: 'text' as const, text: result.reason ?? 'Trigger rejected' }],
+          isError: true,
+        }
+      }
 
       return {
         content: [

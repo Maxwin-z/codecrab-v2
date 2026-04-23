@@ -643,5 +643,28 @@ describe('CronScheduler', () => {
       // Cleanup so test doesn't dangle
       fresh.destroy()
     })
+
+    it('trigger() rejects loop jobs with helpful message', () => {
+      const job = scheduler.create({
+        name: 'Loop NoTrigger', schedule: { kind: 'loop' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+      })
+
+      const result = scheduler.trigger(job.id)
+
+      expect(result.accepted).toBe(false)
+      expect(result.reason).toMatch(/cron_pause/)
+    })
+
+    it('trigger() accepts non-loop jobs', () => {
+      const job = scheduler.create({
+        name: 'Cron Trigger', schedule: { kind: 'cron', expr: '0 9 * * *' }, prompt: 'work',
+        context: { projectId: 'proj-1', sessionId: 'sess-1' }, status: 'pending',
+      })
+
+      const result = scheduler.trigger(job.id)
+
+      expect(result.accepted).toBe(true)
+    })
   })
 })
