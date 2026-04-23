@@ -381,6 +381,8 @@ ${
       ),
       recurring: z.boolean().optional().describe('Whether this is a recurring task'),
       cronExpression: z.string().optional().describe('New cron expression (e.g., "0 9 * * *")'),
+      loop: z.boolean().optional().describe('Switch to (or stay in) loop mode. When true, schedule becomes { kind: "loop", cooldownMs }.'),
+      cooldownMs: z.number().optional().describe('Loop mode only: ms to wait between iterations (default 0).'),
       timezone: z.string().optional().describe('New timezone (e.g., "Asia/Shanghai")'),
       deleteAfterRun: z.boolean().optional().describe('Auto-delete after execution'),
       maxRuns: z.number().optional().describe('Maximum number of runs (0 to remove limit)'),
@@ -400,8 +402,11 @@ ${
       if (input.maxRuns !== undefined) changes.push(`maxRuns → ${input.maxRuns === 0 ? 'unlimited' : input.maxRuns}`)
 
       // Parse new schedule if provided
-      let newSchedule = undefined
-      if (input.when || input.cronExpression) {
+      let newSchedule: CronSchedule | undefined
+      if (input.loop === true) {
+        newSchedule = { kind: 'loop', cooldownMs: input.cooldownMs }
+        changes.push(`schedule → loop${input.cooldownMs ? ` (cooldown ${input.cooldownMs}ms)` : ''}`)
+      } else if (input.when || input.cronExpression) {
         const isRecurring = input.recurring ?? (job.schedule.kind === 'cron' || job.schedule.kind === 'every')
         const scheduleInput = input.cronExpression || input.when!
         const parsed = CronSchedulerClass.parseSchedule(scheduleInput, isRecurring)
@@ -434,6 +439,10 @@ ${
       } else if (input.timezone && job.schedule.kind === 'cron') {
         newSchedule = { ...job.schedule, tz: input.timezone }
         changes.push(`timezone → ${input.timezone}`)
+      } else if (input.cooldownMs !== undefined && job.schedule.kind === 'loop') {
+        // Allow cooldownMs adjustment without changing kind
+        newSchedule = { kind: 'loop', cooldownMs: input.cooldownMs }
+        changes.push(`cooldownMs → ${input.cooldownMs}`)
       }
 
       if (changes.length === 0) {
