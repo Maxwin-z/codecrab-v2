@@ -51,6 +51,13 @@ function formatSchedule(job: CronJob): string {
     }
     case 'cron':
       return `cron "${s.expr}"${s.tz ? ` (${s.tz})` : ''}`
+    case 'loop': {
+      if (!s.cooldownMs || s.cooldownMs <= 0) return 'loop (immediate)'
+      const secs = Math.round(s.cooldownMs / 1000)
+      if (secs < 60) return `loop (cooldown: ${secs}s)`
+      const mins = Math.round(secs / 60)
+      return `loop (cooldown: ${mins}m)`
+    }
   }
 }
 
