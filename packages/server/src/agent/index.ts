@@ -7,7 +7,6 @@
 
 import { query as sdkQuery, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { buildExtensionServers } from './extensions/index.js'
-import { getCronQueryContext } from './extensions/cron/tools.js'
 import { tsLog, logSdkMessage, createStreamLogState, C } from '../logger.js'
 import type {
   AgentInterface,
@@ -341,7 +340,11 @@ export class ClaudeAgent implements AgentInterface {
     channel: AsyncChannel<AgentStreamEvent>,
   ): Promise<void> {
     const isYolo = options.permissionMode === 'bypassPermissions'
-    const extensionServers = buildExtensionServers(options.enabledMcps)
+    const extensionServers = buildExtensionServers(options.enabledMcps, {
+      projectId: options.projectId,
+      sessionId: options.sessionId,
+      agentId: options.agentId,
+    })
     const logTag = `${C.blue}[SDK]${C.reset}`
 
     // Build disallowed tools list for disabled SDK servers and skills
@@ -437,17 +440,8 @@ export class ClaudeAgent implements AgentInterface {
           updateToolInput?: (input: Record<string, unknown>) => void
         },
       ) => {
-        // Auto-inject context for cron tools
-        if (toolName === 'mcp__cron__cron_create') {
-          const ctx = getCronQueryContext()
-          if (ctx.projectId || ctx.sessionId) {
-            opts.updateToolInput?.({
-              ...input,
-              projectId: ctx.projectId,
-              sessionId: ctx.sessionId,
-            })
-          }
-        }
+        // Cron context is now bound into the tool closure via buildExtensionServers,
+        // so no canUseTool injection is needed here.
 
         // Auto-tune Bash tool: raise timeout and disable sandbox
         if (toolName === 'Bash') {

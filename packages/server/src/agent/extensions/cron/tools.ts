@@ -11,19 +11,18 @@ import type { CronJob, CronSchedule } from '../../../types/index.js'
 
 // ── Injected state ─────────────────────────────────────────────────────────
 
+// Scheduler is a true singleton (one per process) — safe as module-level state.
 let scheduler: CronScheduler | null = null
-let queryContext: { projectId?: string; sessionId?: string } = {}
 
 export function setCronScheduler(s: CronScheduler): void {
   scheduler = s
 }
 
-export function setCronQueryContext(ctx: { projectId?: string; sessionId?: string }): void {
-  queryContext = ctx
-}
-
-export function getCronQueryContext(): { projectId?: string; sessionId?: string } {
-  return queryContext
+// Per-query context is captured in tool closures via buildCronTools(ctx)
+// so concurrent turns in different projects don't clobber each other.
+export interface CronQueryContext {
+  projectId?: string
+  sessionId?: string
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -63,7 +62,9 @@ function formatSchedule(job: CronJob): string {
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
-export const tools = [
+/** Build cron MCP tools with per-query context captured in closure. */
+export function buildCronTools(ctx: CronQueryContext = {}): unknown[] {
+  return [
   tool(
     'cron_create',
     `Create a scheduled task that will execute automatically at a specific time, on a recurring schedule, or in an auto-loop.
@@ -100,8 +101,8 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed. For 
     async (input) => {
       if (!scheduler) return notReady()
 
-      const projectId = input.projectId || queryContext.projectId
-      const sessionId = input.sessionId || queryContext.sessionId
+      const projectId = input.projectId || ctx.projectId
+      const sessionId = input.sessionId || ctx.sessionId
 
       if (!projectId || !sessionId) {
         return {
@@ -189,7 +190,7 @@ CRITICAL - The 'prompt' parameter is the instruction that will be executed. For 
     async (input) => {
       if (!scheduler) return notReady()
 
-      const projectId = queryContext.projectId
+      const projectId = ctx.projectId
       const jobs = scheduler.list(projectId)
       const filtered = input.status ? jobs.filter((j) => j.status === input.status) : jobs
       const limited = filtered.slice(0, input.limit || 20)
@@ -519,4 +520,8 @@ ${
       }
     },
   ),
-]
+  ]
+}
+
+/** Static tool count for extension metadata — reflects buildCronTools length. */
+export const CRON_TOOL_COUNT = buildCronTools().length

@@ -9,20 +9,19 @@ import type { MessageRouter } from '../../../core/message-router.js'
 
 // ── Injected state ─────────────────────────────────────────────────────────
 
+// Router is a true singleton (one per process) — safe as module-level state.
 let router: MessageRouter | null = null
-let queryContext: { agentId?: string; sessionId?: string } = {}
 
 export function setMessageRouter(r: MessageRouter): void {
   router = r
   console.log(`[threads] MessageRouter registered: ${!!r}`)
 }
 
-export function setThreadQueryContext(ctx: { agentId?: string; sessionId?: string }): void {
-  queryContext = ctx
-}
-
-export function getThreadQueryContext(): { agentId?: string; sessionId?: string } {
-  return queryContext
+// Per-query context is captured in tool closures via buildThreadTools(ctx)
+// so concurrent turns don't clobber each other's agentId/sessionId.
+export interface ThreadQueryContext {
+  agentId?: string
+  sessionId?: string
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -32,14 +31,16 @@ function notReady() {
   return { content: [{ type: 'text' as const, text: 'Thread system not initialized. The server may need to be restarted.' }], isError: true }
 }
 
-function noContext() {
-  console.error(`[threads] ERROR: queryContext missing — agentId=${queryContext.agentId} sessionId=${queryContext.sessionId}`)
-  return { content: [{ type: 'text' as const, text: `Agent context not available (agentId=${queryContext.agentId || 'undefined'}, sessionId=${queryContext.sessionId || 'undefined'}). This tool can only be used by agents in a collaboration context.` }], isError: true }
+function noContext(ctx: ThreadQueryContext) {
+  console.error(`[threads] ERROR: ctx missing — agentId=${ctx.agentId} sessionId=${ctx.sessionId}`)
+  return { content: [{ type: 'text' as const, text: `Agent context not available (agentId=${ctx.agentId || 'undefined'}, sessionId=${ctx.sessionId || 'undefined'}). This tool can only be used by agents in a collaboration context.` }], isError: true }
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
 
-export const tools = [
+/** Build thread MCP tools with per-query context captured in closure. */
+export function buildThreadTools(ctx: ThreadQueryContext = {}): unknown[] {
+  return [
   tool(
     'thread_send_message',
     'Send a message to another agent. Use @name to specify the target, or "broadcast" to send to all participants in the current thread. Set new_thread=true to create an independent sub-thread for this message. Use the artifacts parameter to attach previously saved work artifacts by their IDs (returned from thread_save_artifact).',
@@ -52,10 +53,10 @@ export const tools = [
       wait_for_reply: z.boolean().optional().describe('Block until the target agent finishes processing and goes idle. Use this when you need the result before continuing (default: false).'),
     },
     async (input) => {
-      console.log(`[threads] thread_send_message called: to=${input.to} router=${!!router} agentId=${queryContext.agentId} sessionId=${queryContext.sessionId?.slice(0, 20)}`)
+      console.log(`[threads] thread_send_message called: to=${input.to} router=${!!router} agentId=${ctx.agentId} sessionId=${ctx.sessionId?.slice(0, 20)}`)
       if (!router) return notReady()
-      const { agentId, sessionId } = queryContext
-      if (!agentId || !sessionId) return noContext()
+      const { agentId, sessionId } = ctx
+      if (!agentId || !sessionId) return noContext(ctx)
 
       try {
         const result = await router.handleSendMessage(agentId, sessionId, {
@@ -89,8 +90,8 @@ export const tools = [
     },
     async (input) => {
       if (!router) return notReady()
-      const { agentId, sessionId } = queryContext
-      if (!agentId || !sessionId) return noContext()
+      const { agentId, sessionId } = ctx
+      if (!agentId || !sessionId) return noContext(ctx)
 
       try {
         const result = await router.handleSaveArtifact(agentId, sessionId, {
@@ -117,8 +118,8 @@ export const tools = [
     },
     async (input) => {
       if (!router) return notReady()
-      const { agentId } = queryContext
-      if (!agentId) return noContext()
+      const { agentId } = ctx
+      if (!agentId) return noContext(ctx)
 
       const result = router.handleListThreads(agentId, { status: input.status as any })
       return {
@@ -136,8 +137,8 @@ export const tools = [
     },
     async (input) => {
       if (!router) return notReady()
-      const { agentId } = queryContext
-      if (!agentId) return noContext()
+      const { agentId } = ctx
+      if (!agentId) return noContext(ctx)
 
       const result = router.handleGetThreadMessages(agentId, {
         threadId: input.threadId,
@@ -157,8 +158,8 @@ export const tools = [
     },
     async (input) => {
       if (!router) return notReady()
-      const { sessionId } = queryContext
-      if (!sessionId) return noContext()
+      const { sessionId } = ctx
+      if (!sessionId) return noContext(ctx)
 
       try {
         const result = await router.handleCompleteThread(sessionId, {
@@ -175,4 +176,8 @@ export const tools = [
       }
     },
   ),
-]
+  ]
+}
+
+/** Static tool count for extension metadata. */
+export const THREAD_TOOL_COUNT = buildThreadTools().length

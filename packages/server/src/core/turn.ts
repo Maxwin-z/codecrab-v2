@@ -3,8 +3,6 @@ import type { CoreEngine } from './index.js'
 import type { SessionManager } from './session.js'
 import { QueryQueue } from './queue.js'
 import { tsLog, C } from '../logger.js'
-import { setCronQueryContext } from '../agent/extensions/cron/tools.js'
-import { setThreadQueryContext } from '../agent/extensions/threads/tools.js'
 import type { AgentInterface, TurnSubmitParams, QueuedQuery, AgentStreamEvent, TurnType } from '../types/index.js'
 
 /**
@@ -161,18 +159,11 @@ export class TurnManager {
     const abortController = new AbortController()
     this.abortControllers.set(queuedQuery.id, abortController)
 
-    // Set cron query context so cron_create can access projectId/sessionId
-    setCronQueryContext({ projectId: params.projectId, sessionId: params.sessionId })
-
-    // Set thread query context so inter-agent tools can access agentId/sessionId
-    // Extract agentId from project ID pattern: __agent-{agentId}
+    // Resolve agentId for thread tool context. Project IDs of the form
+    // __agent-{agentId} mark agent-scoped sessions; otherwise fall back to metadata.
     const agentIdMatch = params.projectId.match(/^__agent-(?!editor-)(.+)$/)
     const resolvedAgentId = agentIdMatch?.[1] || params.metadata?.fromAgentId
     tsLog(`${tag}   ${C.dim}thread context: projectId=${params.projectId} → agentId=${resolvedAgentId || 'NONE'} sessionId=${params.sessionId.slice(0, 20)}${C.reset}`)
-    setThreadQueryContext({
-      agentId: resolvedAgentId,
-      sessionId: params.sessionId,
-    })
 
     // Create ctx BEFORE try so catch/finally can use ctx.sessionId
     // (which gets updated to the real SDK session ID during session_init).
@@ -201,6 +192,9 @@ export class TurnManager {
         soulEnabled: params.soulEnabled,
         env: providerEnv,
         systemPromptAppend: params.metadata?.systemPromptAppend,
+        projectId: params.projectId,
+        sessionId: params.sessionId,
+        agentId: resolvedAgentId,
       })
 
       ctx.startTime = Date.now()

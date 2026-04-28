@@ -45,6 +45,11 @@ export interface AgentQueryOptions {
   soulEnabled?: boolean
   env?: Record<string, string | undefined>
   systemPromptAppend?: string
+  // Per-query context — bound into MCP tool closures so concurrent turns
+  // across different projects don't share global state.
+  projectId?: string
+  sessionId?: string
+  agentId?: string
 }
 
 export interface SdkInitInfo {
