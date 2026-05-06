@@ -674,6 +674,37 @@ export function createRouter(core: CoreEngine, opts?: { cronScheduler?: CronSche
     res.json(history)
   })
 
+  router.post('/api/cron/jobs/:id/trigger', (req: Request, res: Response) => {
+    if (!cronScheduler) { res.status(404).json({ error: 'Cron scheduler not initialized' }); return }
+    const result = cronScheduler.trigger(req.params.id as string)
+    if (!result.accepted) {
+      const status = result.reason === 'Job not found' ? 404 : 409
+      res.status(status).json({ error: result.reason })
+      return
+    }
+    const job = cronScheduler.get(req.params.id as string)
+    res.json(job ? toClientCronJob(job) : { ok: true })
+  })
+
+  router.post('/api/cron/jobs/:id/pause', (req: Request, res: Response) => {
+    if (!cronScheduler) { res.status(404).json({ error: 'Cron scheduler not initialized' }); return }
+    const job = cronScheduler.get(req.params.id as string)
+    if (!job) { res.status(404).json({ error: 'Job not found' }); return }
+    cronScheduler.pause(req.params.id as string)
+    const updated = cronScheduler.get(req.params.id as string)
+    res.json(updated ? toClientCronJob(updated) : { ok: true })
+  })
+
+  router.post('/api/cron/jobs/:id/resume', (req: Request, res: Response) => {
+    if (!cronScheduler) { res.status(404).json({ error: 'Cron scheduler not initialized' }); return }
+    const job = cronScheduler.get(req.params.id as string)
+    if (!job) { res.status(404).json({ error: 'Job not found' }); return }
+    const ok = cronScheduler.resume(req.params.id as string)
+    if (!ok) { res.status(400).json({ error: 'Failed to resume job (invalid schedule?)' }); return }
+    const updated = cronScheduler.get(req.params.id as string)
+    res.json(updated ? toClientCronJob(updated) : { ok: true })
+  })
+
   router.get('/api/cron/summary', (_req: Request, res: Response) => {
     if (!cronScheduler) {
       res.json({

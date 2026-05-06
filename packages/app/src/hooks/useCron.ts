@@ -65,5 +65,24 @@ export function useCronJobs(onUnauthorized?: () => void) {
 
   useEffect(() => { fetchJobs() }, [fetchJobs])
 
-  return { jobs, loading, refresh: fetchJobs }
+  const mutate = useCallback(async (id: string, action: 'trigger' | 'pause' | 'resume') => {
+    const res = await authFetch(`/api/cron/jobs/${id}/${action}`, { method: 'POST' }, onUnauthorized)
+    if (!res.ok) {
+      let message = `Failed to ${action} job`
+      try {
+        const body = await res.json()
+        if (body?.error) message = body.error
+      } catch { /* ignore */ }
+      throw new Error(message)
+    }
+    const updated = (await res.json()) as CronJobItem
+    setJobs(prev => prev.map(j => (j.id === id ? { ...j, ...updated } : j)))
+    return updated
+  }, [onUnauthorized])
+
+  const triggerJob = useCallback((id: string) => mutate(id, 'trigger'), [mutate])
+  const pauseJob = useCallback((id: string) => mutate(id, 'pause'), [mutate])
+  const resumeJob = useCallback((id: string) => mutate(id, 'resume'), [mutate])
+
+  return { jobs, loading, refresh: fetchJobs, triggerJob, pauseJob, resumeJob }
 }

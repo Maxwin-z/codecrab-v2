@@ -1,12 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import {
-  ArrowLeft, Clock, Play, Pause, CheckCircle, XCircle,
+  ArrowLeft, Clock, Play, PlayCircle, Pause, CheckCircle, XCircle,
   Timer, Repeat, Calendar, ChevronDown, ChevronRight, Terminal,
+  Copy, Check, ExternalLink, FolderOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCronJobs } from '@/hooks/useCron'
 import type { CronJobItem, CronSchedule } from '@/hooks/useCron'
+import { authFetch } from '@/lib/auth'
+
+interface ProjectSummary {
+  id: string
+  name: string
+  path: string
+}
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -69,10 +77,79 @@ const STATUS_CONFIG: Record<string, { icon: typeof Clock; color: string; bgColor
   disabled: { icon: Pause, color: 'text-muted-foreground', bgColor: 'bg-secondary', label: 'Paused' },
 }
 
-function JobRow({ job, expanded, onToggle }: { job: CronJobItem; expanded: boolean; onToggle: () => void }) {
+function isRecurring(schedule: CronSchedule): boolean {
+  return schedule.kind === 'cron' || schedule.kind === 'every' || (schedule.kind as string) === 'loop'
+}
+
+function openProjectInNewWindow(projectId: string) {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '') || ''
+  window.open(`${base}/chat?project=${projectId}`, '_blank')
+}
+
+function IconAction({
+  icon: Icon, title, onClick, className, disabled,
+}: {
+  icon: typeof Clock
+  title: string
+  onClick: (e: React.MouseEvent) => void
+  className?: string
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(e) }}
+      className={`h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:pointer-events-none ${className ?? ''}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const onClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    }).catch(() => { /* ignore */ })
+  }
+  const Icon = copied ? Check : Copy
+  return (
+    <IconAction
+      icon={Icon}
+      title={copied ? 'Copied' : label}
+      onClick={onClick}
+      className={copied ? 'text-emerald-600 dark:text-emerald-400' : ''}
+    />
+  )
+}
+
+function JobRow({
+  job, project, expanded, onToggle, onTrigger, onPause, onResume,
+}: {
+  job: CronJobItem
+  project?: ProjectSummary
+  expanded: boolean
+  onToggle: () => void
+  onTrigger: (job: CronJobItem) => void
+  onPause: (job: CronJobItem) => void
+  onResume: (job: CronJobItem) => void
+}) {
   const config = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending
   const StatusIcon = config.icon
   const ScheduleIcon = scheduleTypeIcon(job.schedule)
+
+  const recurring = isRecurring(job.schedule)
+  const canRun = job.status !== 'running'
+  const canPause = recurring && job.status !== 'disabled'
+  const canResume = recurring && job.status === 'disabled'
+
+  const copyInfo = `${job.name} (${job.id})`
 
   return (
     <div className="rounded-lg border bg-card flex flex-col overflow-hidden">
@@ -90,9 +167,34 @@ function JobRow({ job, expanded, onToggle }: { job: CronJobItem; expanded: boole
             <StatusIcon className={`h-4 w-4 shrink-0 ${config.color}`} />
             <h3 className="text-sm font-medium truncate">{job.name}</h3>
           </div>
-          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs shrink-0 ${config.bgColor} ${config.color}`}>
-            {config.label}
-          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            {canRun && (
+              <IconAction
+                icon={Play}
+                title="Run now"
+                onClick={() => onTrigger(job)}
+              />
+            )}
+            {canPause && (
+              <IconAction
+                icon={Pause}
+                title="Pause schedule"
+                onClick={() => onPause(job)}
+              />
+            )}
+            {canResume && (
+              <IconAction
+                icon={PlayCircle}
+                title="Resume schedule"
+                onClick={() => onResume(job)}
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+              />
+            )}
+            <CopyButton text={copyInfo} label="Copy name + ID" />
+            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs ml-1 ${config.bgColor} ${config.color}`}>
+              {config.label}
+            </span>
+          </div>
         </div>
 
         {/* Prompt preview (collapsed) */}
@@ -125,6 +227,27 @@ function JobRow({ job, expanded, onToggle }: { job: CronJobItem; expanded: boole
       {/* Expanded detail */}
       {expanded && (
         <div className="border-t px-4 pb-4 pt-3 flex flex-col gap-4 bg-muted/30">
+          {job.context.projectId && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                <FolderOpen className="h-3 w-3" />
+                Project
+              </h4>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); openProjectInNewWindow(job.context.projectId!) }}
+                className="group inline-flex items-center gap-1.5 text-sm text-primary hover:underline cursor-pointer"
+                title="Open project in new window"
+              >
+                <span className="font-medium">{project?.name ?? 'Unknown project'}</span>
+                <ExternalLink className="h-3 w-3 opacity-60 group-hover:opacity-100" />
+              </button>
+              {project?.path && (
+                <p className="mt-0.5 text-xs text-muted-foreground font-mono truncate">{project.path}</p>
+              )}
+            </div>
+          )}
+
           {job.description && (
             <div>
               <h4 className="text-xs font-medium text-muted-foreground mb-1">Description</h4>
@@ -175,10 +298,17 @@ function JobRow({ job, expanded, onToggle }: { job: CronJobItem; expanded: boole
               <span className="text-muted-foreground">Runs</span>
               <p>{job.runCount}{job.maxRuns ? ` / ${job.maxRuns}` : ''}</p>
             </div>
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Job ID</span>
+              <div className="flex items-center gap-1.5">
+                <p className="font-mono text-xs truncate">{job.id}</p>
+                <CopyButton text={job.id} label="Copy ID" />
+              </div>
+            </div>
             {job.context.projectId && (
-              <div>
+              <div className="col-span-2">
                 <span className="text-muted-foreground">Project ID</span>
-                <p className="font-mono truncate">{job.context.projectId}</p>
+                <p className="font-mono text-xs truncate">{job.context.projectId}</p>
               </div>
             )}
           </div>
@@ -190,10 +320,46 @@ function JobRow({ job, expanded, onToggle }: { job: CronJobItem; expanded: boole
 
 export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
   const navigate = useNavigate()
-  const { jobs, loading, refresh } = useCronJobs(onUnauthorized)
+  const { jobs, loading, refresh, triggerJob, pauseJob, resumeJob } = useCronJobs(onUnauthorized)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [projectMap, setProjectMap] = useState<Map<string, ProjectSummary>>(new Map())
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    authFetch('/api/projects', {}, onUnauthorized)
+      .then(res => res.ok ? res.json() : [])
+      .then((list: ProjectSummary[]) => {
+        if (cancelled) return
+        const m = new Map<string, ProjectSummary>()
+        for (const p of list) m.set(p.id, p)
+        setProjectMap(m)
+      })
+      .catch(() => { /* ignore */ })
+    return () => { cancelled = true }
+  }, [onUnauthorized])
 
   const toggle = (id: string) => setExpandedId(prev => prev === id ? null : id)
+
+  const runAction = async (job: CronJobItem, action: 'trigger' | 'pause' | 'resume') => {
+    if (pendingAction) return
+    setPendingAction(job.id + ':' + action)
+    setActionError(null)
+    try {
+      if (action === 'trigger') await triggerJob(job.id)
+      else if (action === 'pause') await pauseJob(job.id)
+      else await resumeJob(job.id)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : `Failed to ${action} job`)
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  const onTrigger = (job: CronJobItem) => void runAction(job, 'trigger')
+  const onPause = (job: CronJobItem) => void runAction(job, 'pause')
+  const onResume = (job: CronJobItem) => void runAction(job, 'resume')
 
   const activeJobs = jobs.filter(j => j.status === 'pending' || j.status === 'running')
   const pausedJobs = jobs.filter(j => j.status === 'disabled')
@@ -213,6 +379,19 @@ export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
     )
   }
 
+  const renderRows = (list: CronJobItem[]) => list.map(job => (
+    <JobRow
+      key={job.id}
+      job={job}
+      project={job.context.projectId ? projectMap.get(job.context.projectId) : undefined}
+      expanded={expandedId === job.id}
+      onToggle={() => toggle(job.id)}
+      onTrigger={onTrigger}
+      onPause={onPause}
+      onResume={onResume}
+    />
+  ))
+
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b shrink-0">
@@ -228,6 +407,18 @@ export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
           Refresh
         </Button>
       </header>
+
+      {actionError && (
+        <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center justify-between">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-red-600 dark:text-red-400 hover:underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-6">
@@ -251,9 +442,7 @@ export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
                 Active ({activeJobs.length})
               </h2>
               <div className="flex flex-col gap-2">
-                {activeJobs.map(job => (
-                  <JobRow key={job.id} job={job} expanded={expandedId === job.id} onToggle={() => toggle(job.id)} />
-                ))}
+                {renderRows(activeJobs)}
               </div>
             </section>
           )}
@@ -265,9 +454,7 @@ export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
                 Paused ({pausedJobs.length})
               </h2>
               <div className="flex flex-col gap-2">
-                {pausedJobs.map(job => (
-                  <JobRow key={job.id} job={job} expanded={expandedId === job.id} onToggle={() => toggle(job.id)} />
-                ))}
+                {renderRows(pausedJobs)}
               </div>
             </section>
           )}
@@ -279,9 +466,7 @@ export function CronPage({ onUnauthorized }: { onUnauthorized?: () => void }) {
                 History ({historyJobs.length})
               </h2>
               <div className="flex flex-col gap-2">
-                {historyJobs.map(job => (
-                  <JobRow key={job.id} job={job} expanded={expandedId === job.id} onToggle={() => toggle(job.id)} />
-                ))}
+                {renderRows(historyJobs)}
               </div>
             </section>
           )}

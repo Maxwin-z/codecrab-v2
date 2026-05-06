@@ -236,7 +236,6 @@ export class CronScheduler {
         // Success
         const durationMs = Date.now() - startTime
         job.runCount++
-        job.status = 'pending'
 
         const run: CronJobRun = {
           id: runId,
@@ -250,6 +249,10 @@ export class CronScheduler {
         this.store.appendRun(job.id, run)
         console.log(`[CronScheduler] Job ${job.id} completed in ${durationMs}ms`)
 
+        // Re-read latest to detect pause-during-run (user may have flipped status mid-run)
+        const latest = this.store.getJob(job.id)
+        const wasPaused = latest?.status === 'disabled'
+
         if (job.schedule.kind === 'at') {
           // One-shot job completed — mark as completed so it appears in history
           job.status = 'completed'
@@ -257,6 +260,16 @@ export class CronScheduler {
           this.store.saveJob(job)
           return
         }
+
+        if (wasPaused) {
+          // User paused mid-run — keep status disabled, persist updated runCount, do not reschedule
+          job.status = 'disabled'
+          this.cancel(job.id)
+          this.store.saveJob(job)
+          return
+        }
+
+        job.status = 'pending'
 
         if (job.maxRuns && job.runCount >= job.maxRuns) {
           job.status = 'disabled'
